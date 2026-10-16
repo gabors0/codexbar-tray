@@ -9,7 +9,24 @@ permissions:
   contents: write
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches Cargo.toml version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          crate=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "codexbar-tray") | .version')
+          echo "tag: $tag  Cargo.toml: $crate"
+          if [ "$tag" != "$crate" ]; then
+            echo "::error file=Cargo.toml::Tag $GITHUB_REF_NAME does not match Cargo.toml version $crate"
+            exit 1
+          fi
+
   build:
+    needs: version
     strategy:
       matrix:
         include:
