@@ -22,13 +22,20 @@ fn cli_dir() -> PathBuf {
     home().join(".local/lib/codexbar-cli")
 }
 fn applications_dir() -> PathBuf {
-    dirs::data_dir().unwrap_or_else(|| home().join(".local/share")).join("applications")
+    dirs::data_dir()
+        .unwrap_or_else(|| home().join(".local/share"))
+        .join("applications")
 }
 fn autostart_dir() -> PathBuf {
-    dirs::config_dir().unwrap_or_else(|| home().join(".config")).join("autostart")
+    dirs::config_dir()
+        .unwrap_or_else(|| home().join(".config"))
+        .join("autostart")
 }
 fn icon_path() -> PathBuf {
-    dirs::data_dir().unwrap_or_else(|| home().join(".local/share")).join("icons/hicolor/256x256/apps").join(format!("{APP_ID}.png"))
+    dirs::data_dir()
+        .unwrap_or_else(|| home().join(".local/share"))
+        .join("icons/hicolor/256x256/apps")
+        .join(format!("{APP_ID}.png"))
 }
 
 fn step(msg: &str) {
@@ -36,7 +43,12 @@ fn step(msg: &str) {
 }
 
 fn have(cmd: &str) -> bool {
-    Command::new("sh").args(["-c", &format!("command -v {cmd}")]).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
+    Command::new("sh")
+        .args(["-c", &format!("command -v {cmd}")])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 /// Download `url` to `dest` with curl (or wget).
@@ -44,9 +56,27 @@ fn download(url: &str, dest: &Path) -> Result<(), String> {
     use std::io::IsTerminal;
     let tty = std::io::stderr().is_terminal();
     let status = if have("curl") {
-        Command::new("curl").args(["-fL", "--retry", "2", if tty { "--progress-bar" } else { "-sS" }, "-o"]).arg(dest).arg(url).status()
+        Command::new("curl")
+            .args([
+                "-fL",
+                "--retry",
+                "2",
+                if tty { "--progress-bar" } else { "-sS" },
+                "-o",
+            ])
+            .arg(dest)
+            .arg(url)
+            .status()
     } else if have("wget") {
-        Command::new("wget").args(if tty { ["-q", "--show-progress", "-O"] } else { ["-q", "-q", "-O"] }).arg(dest).arg(url).status()
+        Command::new("wget")
+            .args(if tty {
+                ["-q", "--show-progress", "-O"]
+            } else {
+                ["-q", "-q", "-O"]
+            })
+            .arg(dest)
+            .arg(url)
+            .status()
     } else {
         return Err("Need curl or wget to download the CodexBar CLI".into());
     };
@@ -58,7 +88,9 @@ fn download(url: &str, dest: &Path) -> Result<(), String> {
 
 fn fetch_text(url: &str) -> Result<String, String> {
     let out = if have("curl") {
-        Command::new("curl").args(["-fsSL", "-H", "Accept: application/vnd.github+json", url]).output()
+        Command::new("curl")
+            .args(["-fsSL", "-H", "Accept: application/vnd.github+json", url])
+            .output()
     } else {
         Command::new("wget").args(["-qO-", url]).output()
     }
@@ -70,14 +102,27 @@ fn fetch_text(url: &str) -> Result<String, String> {
 }
 
 fn sha256(path: &Path) -> Result<String, String> {
-    let out = Command::new("sha256sum").arg(path).output().map_err(|e| format!("sha256sum: {e}"))?;
-    String::from_utf8_lossy(&out.stdout).split_whitespace().next().map(str::to_string).ok_or_else(|| "sha256sum failed".into())
+    let out = Command::new("sha256sum")
+        .arg(path)
+        .output()
+        .map_err(|e| format!("sha256sum: {e}"))?;
+    String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .next()
+        .map(str::to_string)
+        .ok_or_else(|| "sha256sum failed".into())
 }
 
 /// The CLI the app would use right now, if it actually runs.
 pub fn working_cli(cfg: &Config) -> Option<PathBuf> {
     let path = cfg.resolved_cli();
-    let ok = Command::new(&path).arg("--version").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
+    let ok = Command::new(&path)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
     ok.then_some(path)
 }
 
@@ -90,8 +135,10 @@ pub fn install_cli() -> Result<PathBuf, String> {
         other => return Err(format!("No CodexBar CLI build for {other}")),
     };
     // Linux archives can lag a fresh tag by a while, so take the newest release that has ours.
-    let releases: serde_json::Value = serde_json::from_str(&fetch_text(&format!("https://api.github.com/repos/{CLI_REPO}/releases?per_page=10"))?)
-        .map_err(|e| format!("GitHub API: {e}"))?;
+    let releases: serde_json::Value = serde_json::from_str(&fetch_text(&format!(
+        "https://api.github.com/repos/{CLI_REPO}/releases?per_page=10"
+    ))?)
+    .map_err(|e| format!("GitHub API: {e}"))?;
     let suffix = format!("-linux-musl-{arch}.tar.gz");
     let (tag, name) = releases
         .as_array()
@@ -99,9 +146,22 @@ pub fn install_cli() -> Result<PathBuf, String> {
         .flatten()
         .filter(|r| r["draft"].as_bool() != Some(true) && r["prerelease"].as_bool() != Some(true))
         .find_map(|r| {
-            let names: Vec<&str> = r["assets"].as_array()?.iter().filter_map(|a| a["name"].as_str()).collect();
-            let archive = names.iter().find(|n| n.starts_with("CodexBarCLI-") && n.ends_with(&suffix))?;
-            names.contains(&format!("{archive}.sha256").as_str()).then(|| (r["tag_name"].as_str().unwrap_or("?").to_string(), archive.to_string()))
+            let names: Vec<&str> = r["assets"]
+                .as_array()?
+                .iter()
+                .filter_map(|a| a["name"].as_str())
+                .collect();
+            let archive = names
+                .iter()
+                .find(|n| n.starts_with("CodexBarCLI-") && n.ends_with(&suffix))?;
+            names
+                .contains(&format!("{archive}.sha256").as_str())
+                .then(|| {
+                    (
+                        r["tag_name"].as_str().unwrap_or("?").to_string(),
+                        archive.to_string(),
+                    )
+                })
         })
         .ok_or_else(|| format!("No published CodexBar CLI build for linux-musl-{arch}"))?;
     let base = format!("https://github.com/{CLI_REPO}/releases/download/{tag}");
@@ -117,7 +177,11 @@ pub fn install_cli() -> Result<PathBuf, String> {
         let _ = fs::remove_dir_all(&work);
         return Err(e);
     }
-    let expected = fetch_text(&format!("{base}/{name}.sha256"))?.split_whitespace().next().unwrap_or_default().to_lowercase();
+    let expected = fetch_text(&format!("{base}/{name}.sha256"))?
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .to_lowercase();
     let actual = sha256(&archive)?;
     if expected.len() != 64 || expected != actual {
         let _ = fs::remove_dir_all(&work);
@@ -126,7 +190,13 @@ pub fn install_cli() -> Result<PathBuf, String> {
     step("Checksum verified");
     let staged = work.join("cli");
     fs::create_dir_all(&staged).map_err(|e| e.to_string())?;
-    let ok = Command::new("tar").arg("-xzf").arg(&archive).arg("-C").arg(&staged).status().is_ok_and(|s| s.success());
+    let ok = Command::new("tar")
+        .arg("-xzf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&staged)
+        .status()
+        .is_ok_and(|s| s.success());
     if !ok || !staged.join("CodexBarCLI").exists() {
         let _ = fs::remove_dir_all(&work);
         return Err("Could not extract the CLI archive".into());
@@ -138,7 +208,11 @@ pub fn install_cli() -> Result<PathBuf, String> {
     // Point ~/.local/bin/codexbar at it, unless the user already has a real binary there.
     let link = bin_dir().join("codexbar");
     let _ = fs::create_dir_all(bin_dir());
-    if link.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) || !link.exists() {
+    if link
+        .symlink_metadata()
+        .is_ok_and(|m| m.file_type().is_symlink())
+        || !link.exists()
+    {
         let _ = fs::remove_file(&link);
         symlink(dir.join("codexbar"), &link).map_err(|e| e.to_string())?;
     }
@@ -166,7 +240,9 @@ fn desktop_entry(exec: &Path, background: bool) -> String {
 /// `codexbar-linux` build of this app, so the launcher shows one CodexBar and login starts one.
 fn retire_qt_entries() {
     // The earlier build listened on its own socket; ask it to quit.
-    if let Ok(mut s) = std::os::unix::net::UnixStream::connect(runtime_dir().join("codexbar-linux-tray.sock")) {
+    if let Ok(mut s) =
+        std::os::unix::net::UnixStream::connect(runtime_dir().join("codexbar-linux-tray.sock"))
+    {
         let _ = s.write_all(b"{\"cmd\":\"quit\"}\n");
     }
     for path in [
@@ -185,7 +261,9 @@ fn retire_qt_entries() {
 }
 
 fn claude_logged_in() -> bool {
-    let base = std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).unwrap_or_else(|| home().join(".claude"));
+    let base = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".claude"));
     base.join(".credentials.json").exists()
 }
 
@@ -227,7 +305,10 @@ pub fn install(args: &[String]) -> i32 {
             step(&format!("Kept previous {} as {}", APP_ID, backup.display()));
         }
         let tmp = target.with_extension("new");
-        if let Err(e) = fs::copy(&me, &tmp).and_then(|_| fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755))).and_then(|_| fs::rename(&tmp, &target)) {
+        if let Err(e) = fs::copy(&me, &tmp)
+            .and_then(|_| fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755)))
+            .and_then(|_| fs::rename(&tmp, &target))
+        {
             eprintln!("Cannot install to {}: {e}", target.display());
             return 1;
         }
@@ -237,7 +318,10 @@ pub fn install(args: &[String]) -> i32 {
     // 3. The CodexBar CLI (reuse a working one unless --update-cli).
     let mut cfg = Config::load();
     match working_cli(&cfg).filter(|_| !flag("--update-cli")) {
-        Some(path) => step(&format!("Using existing CodexBar CLI at {}", path.display())),
+        Some(path) => step(&format!(
+            "Using existing CodexBar CLI at {}",
+            path.display()
+        )),
         None => match install_cli() {
             Ok(path) => {
                 if working_cli(&cfg).is_none() {
@@ -257,11 +341,33 @@ pub fn install(args: &[String]) -> i32 {
         if let Some(dir) = icon_path().parent() {
             let _ = fs::create_dir_all(dir);
         }
-        if image::save_buffer(icon_path(), &rgba, 256, 256, image::ExtendedColorType::Rgba8).is_ok() {
-            let _ = Command::new("gtk-update-icon-cache").args(["-q", "-t"]).arg(icon_path().parent().unwrap().parent().unwrap().parent().unwrap()).status();
+        if image::save_buffer(
+            icon_path(),
+            &rgba,
+            256,
+            256,
+            image::ExtendedColorType::Rgba8,
+        )
+        .is_ok()
+        {
+            let _ = Command::new("gtk-update-icon-cache")
+                .args(["-q", "-t"])
+                .arg(
+                    icon_path()
+                        .parent()
+                        .unwrap()
+                        .parent()
+                        .unwrap()
+                        .parent()
+                        .unwrap(),
+                )
+                .status();
         }
     }
-    if let Err(e) = write(&applications_dir().join(format!("{APP_ID}.desktop")), desktop_entry(&target, false).as_bytes()) {
+    if let Err(e) = write(
+        &applications_dir().join(format!("{APP_ID}.desktop")),
+        desktop_entry(&target, false).as_bytes(),
+    ) {
         eprintln!("  ! {e}");
     }
     step("Added CodexBar to the application launcher");
@@ -279,8 +385,12 @@ pub fn install(args: &[String]) -> i32 {
         start_detached(&target);
         step("Started — look for the bars icon in your system tray");
     }
-    if !std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).any(|p| p == bin_dir()) {
-        println!("\nNote: {} is not on your PATH. Add it to run `codexbar-tray` from a terminal.", bin_dir().display());
+    if !std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).any(|p| p == bin_dir())
+    {
+        println!(
+            "\nNote: {} is not on your PATH. Add it to run `codexbar-tray` from a terminal.",
+            bin_dir().display()
+        );
     }
     if !claude_logged_in() {
         println!("\nClaude: no login found in ~/.claude. Install Claude Code and run `claude` once to sign in;\nCodexBar reads the same credentials (nothing to paste).");
@@ -328,7 +438,10 @@ pub fn uninstall(args: &[String]) -> i32 {
         println!("  removed {}", p.display());
     }
     if !purge {
-        println!("Settings kept in {} (use --purge to remove).", crate::config::config_path().display());
+        println!(
+            "Settings kept in {} (use --purge to remove).",
+            crate::config::config_path().display()
+        );
     }
     0
 }

@@ -75,18 +75,32 @@ pub fn detect() -> Desktop {
     let get = |section: &str, key: &str| kde.as_deref().and_then(|t| ini_value(t, section, key));
     let bg = get("Colors:Window", "BackgroundNormal").and_then(|v| parse_rgb(&v));
     let fg = get("Colors:Window", "ForegroundNormal").and_then(|v| parse_rgb(&v));
-    let font_family = get("General", "font").and_then(|f| f.split(',').next().map(str::to_string)).filter(|f| !f.is_empty());
+    let font_family = get("General", "font")
+        .and_then(|f| f.split(',').next().map(str::to_string))
+        .filter(|f| !f.is_empty());
     let dark = match bg {
         Some(bg) => bg.luminance() < 0.5,
         None => portal_prefers_dark().unwrap_or(true),
     };
-    let (default_bg, default_fg) = if dark { (Rgb(30, 31, 34), Rgb(236, 236, 238)) } else { (Rgb(250, 249, 247), Rgb(29, 29, 31)) };
-    Desktop { dark, window_bg: bg.unwrap_or(default_bg), window_fg: fg.unwrap_or(default_fg), font_family }
+    let (default_bg, default_fg) = if dark {
+        (Rgb(30, 31, 34), Rgb(236, 236, 238))
+    } else {
+        (Rgb(250, 249, 247), Rgb(29, 29, 31))
+    };
+    Desktop {
+        dark,
+        window_bg: bg.unwrap_or(default_bg),
+        window_fg: fg.unwrap_or(default_fg),
+        font_family,
+    }
 }
 
 /// Resolve a font file through fontconfig, e.g. ("Inter", "SemiBold").
 pub fn font_file(family: &str, style: &str) -> Option<Vec<u8>> {
-    let out = Command::new("fc-match").args(["-f", "%{file}", &format!("{family}:style={style}")]).output().ok()?;
+    let out = Command::new("fc-match")
+        .args(["-f", "%{file}", &format!("{family}:style={style}")])
+        .output()
+        .ok()?;
     let path = String::from_utf8(out.stdout).ok()?;
     if path.is_empty() {
         return None;

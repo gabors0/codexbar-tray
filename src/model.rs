@@ -80,7 +80,10 @@ impl ProviderUsage {
         provider_name(&self.id)
     }
     pub fn session(&self) -> Option<&Window> {
-        self.windows.iter().find(|w| w.is_session()).or_else(|| self.windows.iter().find(|w| !w.scoped))
+        self.windows
+            .iter()
+            .find(|w| w.is_session())
+            .or_else(|| self.windows.iter().find(|w| !w.scoped))
     }
     pub fn weekly(&self) -> Option<&Window> {
         self.windows.iter().find(|w| w.is_weekly())
@@ -155,7 +158,9 @@ pub fn provider_name(id: &str) -> String {
         "minimax" => "MiniMax".into(),
         _ => {
             let mut c = id.chars();
-            c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+            c.next()
+                .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+                .unwrap_or_default()
         }
     }
 }
@@ -167,11 +172,16 @@ fn num(v: &Value) -> Option<f64> {
 }
 
 fn text(v: &Value) -> Option<String> {
-    v.as_str().map(str::trim).filter(|s| !s.is_empty()).map(|s| s.chars().take(300).collect())
+    v.as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.chars().take(300).collect())
 }
 
 fn time(v: &Value) -> Option<DateTime<Utc>> {
-    v.as_str().and_then(|s| DateTime::parse_from_rfc3339(s).ok()).map(|t| t.with_timezone(&Utc))
+    v.as_str()
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|t| t.with_timezone(&Utc))
 }
 
 fn parse_pace(v: &Value) -> Option<Pace> {
@@ -188,7 +198,13 @@ fn parse_pace(v: &Value) -> Option<Pace> {
     })
 }
 
-fn parse_window(key: &str, label: String, w: &Value, pace: Option<Pace>, scoped: bool) -> Option<Window> {
+fn parse_window(
+    key: &str,
+    label: String,
+    w: &Value,
+    pace: Option<Pace>,
+    scoped: bool,
+) -> Option<Window> {
     if w["isSyntheticPlaceholder"].as_bool() == Some(true) {
         return None;
     }
@@ -196,7 +212,10 @@ fn parse_window(key: &str, label: String, w: &Value, pace: Option<Pace>, scoped:
     Some(Window {
         key: key.to_string(),
         label,
-        minutes: w["windowMinutes"].as_u64().map(|m| m as u32).filter(|m| *m > 0),
+        minutes: w["windowMinutes"]
+            .as_u64()
+            .map(|m| m as u32)
+            .filter(|m| *m > 0),
         used,
         resets_at: time(&w["resetsAt"]),
         pace,
@@ -210,12 +229,16 @@ fn default_label(minutes: Option<u64>, index: usize) -> String {
         Some(10080) => "Weekly".into(),
         Some(m) if m >= 1440 => format!("{} days", m / 1440),
         Some(m) if m > 0 => format!("{} hours", m / 60),
-        _ => ["Session", "Weekly", "Additional"].get(index).unwrap_or(&"Limit").to_string(),
+        _ => ["Session", "Weekly", "Additional"]
+            .get(index)
+            .unwrap_or(&"Limit")
+            .to_string(),
     }
 }
 
 pub fn parse_usage(json: &str) -> Result<Vec<ProviderUsage>, String> {
-    let decoded: Value = serde_json::from_str(json.trim()).map_err(|e| format!("Invalid CLI output: {e}"))?;
+    let decoded: Value =
+        serde_json::from_str(json.trim()).map_err(|e| format!("Invalid CLI output: {e}"))?;
     let entries = match decoded {
         Value::Array(a) => a,
         v @ Value::Object(_) => vec![v],
@@ -224,7 +247,9 @@ pub fn parse_usage(json: &str) -> Result<Vec<ProviderUsage>, String> {
     let now = Utc::now();
     let mut out = Vec::new();
     for entry in entries {
-        let Some(id) = text(&entry["provider"]) else { continue };
+        let Some(id) = text(&entry["provider"]) else {
+            continue;
+        };
         let usage = &entry["usage"];
         let identity = &usage["identity"];
         let mut windows = Vec::new();
@@ -235,7 +260,8 @@ pub fn parse_usage(json: &str) -> Result<Vec<ProviderUsage>, String> {
             }
             let label = text(&entry["rateWindowLabels"][*key])
                 .unwrap_or_else(|| default_label(w["windowMinutes"].as_u64(), index));
-            if let Some(win) = parse_window(key, label, w, parse_pace(&entry["pace"][*key]), false) {
+            if let Some(win) = parse_window(key, label, w, parse_pace(&entry["pace"][*key]), false)
+            {
                 windows.push(win);
             }
         }
@@ -244,9 +270,13 @@ pub fn parse_usage(json: &str) -> Result<Vec<ProviderUsage>, String> {
                 if extra["usageKnown"].as_bool() == Some(false) {
                     continue;
                 }
-                let Some(eid) = text(&extra["id"]) else { continue };
+                let Some(eid) = text(&extra["id"]) else {
+                    continue;
+                };
                 let label = text(&extra["title"]).unwrap_or_else(|| "Additional".into());
-                if let Some(win) = parse_window(&format!("extra:{eid}"), label, &extra["window"], None, true) {
+                if let Some(win) =
+                    parse_window(&format!("extra:{eid}"), label, &extra["window"], None, true)
+                {
                     windows.push(win);
                 }
             }
@@ -262,18 +292,27 @@ pub fn parse_usage(json: &str) -> Result<Vec<ProviderUsage>, String> {
             url: text(&entry["status"]["url"]).unwrap_or_default(),
         });
         let cost = &usage["providerCost"];
-        let extra = cost.is_object().then(|| ExtraUsage {
-            used: num(&cost["used"]),
-            limit: num(&cost["limit"]),
-            currency: text(&cost["currencyCode"]).unwrap_or_else(|| "USD".into()),
-            period: text(&cost["period"]).unwrap_or_default(),
-        }).filter(|e| e.used.is_some() || e.limit.is_some());
+        let extra = cost
+            .is_object()
+            .then(|| ExtraUsage {
+                used: num(&cost["used"]),
+                limit: num(&cost["limit"]),
+                currency: text(&cost["currencyCode"]).unwrap_or_else(|| "USD".into()),
+                period: text(&cost["period"]).unwrap_or_default(),
+            })
+            .filter(|e| e.used.is_some() || e.limit.is_some());
         out.push(ProviderUsage {
-            plan: text(&identity["loginMethod"]).or_else(|| text(&usage["loginMethod"])).map(clean_plan),
+            plan: text(&identity["loginMethod"])
+                .or_else(|| text(&usage["loginMethod"]))
+                .map(clean_plan),
             account: text(&identity["accountEmail"]).or_else(|| text(&usage["accountEmail"])),
             source: text(&entry["source"]).unwrap_or_default(),
             credits: num(&entry["credits"]["remaining"]),
-            error: error.or_else(|| windows.is_empty().then(|| "No quota windows reported".to_string())),
+            error: error.or_else(|| {
+                windows
+                    .is_empty()
+                    .then(|| "No quota windows reported".to_string())
+            }),
             windows,
             status,
             extra,
@@ -288,30 +327,41 @@ pub fn parse_usage(json: &str) -> Result<Vec<ProviderUsage>, String> {
 }
 
 fn clean_plan(plan: String) -> String {
-    plan.strip_prefix("Claude ").map(str::to_string).unwrap_or(plan)
+    plan.strip_prefix("Claude ")
+        .map(str::to_string)
+        .unwrap_or(plan)
 }
 
 pub fn parse_costs(json: &str) -> Result<Vec<CostSummary>, String> {
-    let decoded: Value = serde_json::from_str(json.trim()).map_err(|e| format!("Invalid cost output: {e}"))?;
+    let decoded: Value =
+        serde_json::from_str(json.trim()).map_err(|e| format!("Invalid cost output: {e}"))?;
     let rows = decoded.as_array().ok_or("Unexpected cost output")?;
     let today = Local::now().date_naive();
     let mut out = Vec::new();
     for row in rows {
-        let Some(provider) = text(&row["provider"]) else { continue };
+        let Some(provider) = text(&row["provider"]) else {
+            continue;
+        };
         let mut daily: Vec<DailyCost> = row["daily"]
             .as_array()
             .map(|days| {
                 days.iter()
                     .filter_map(|d| {
                         Some(DailyCost {
-                            date: NaiveDate::parse_from_str(d["date"].as_str()?, "%Y-%m-%d").ok()?,
+                            date: NaiveDate::parse_from_str(d["date"].as_str()?, "%Y-%m-%d")
+                                .ok()?,
                             cost: num(&d["totalCost"]).unwrap_or(0.0),
                             tokens: d["totalTokens"].as_u64().unwrap_or(0),
                             models: d["modelBreakdowns"]
                                 .as_array()
                                 .map(|m| {
                                     m.iter()
-                                        .filter_map(|b| Some((text(&b["modelName"])?, num(&b["cost"]).unwrap_or(0.0))))
+                                        .filter_map(|b| {
+                                            Some((
+                                                text(&b["modelName"])?,
+                                                num(&b["cost"]).unwrap_or(0.0),
+                                            ))
+                                        })
                                         .collect()
                                 })
                                 .unwrap_or_default(),
@@ -335,10 +385,15 @@ pub fn parse_costs(json: &str) -> Result<Vec<CostSummary>, String> {
         out.push(CostSummary {
             today: today_row.map(|d| d.cost).unwrap_or(0.0),
             today_tokens: today_row.map(|d| d.tokens).unwrap_or(0),
-            last30: num(&row["last30DaysCostUSD"]).unwrap_or_else(|| daily.iter().map(|d| d.cost).sum()),
-            tokens30: row["last30DaysTokens"].as_u64().unwrap_or_else(|| daily.iter().map(|d| d.tokens).sum()),
+            last30: num(&row["last30DaysCostUSD"])
+                .unwrap_or_else(|| daily.iter().map(|d| d.cost).sum()),
+            tokens30: row["last30DaysTokens"]
+                .as_u64()
+                .unwrap_or_else(|| daily.iter().map(|d| d.tokens).sum()),
             estimated: row["provenance"].as_str() != Some("actual"),
-            error: row["error"].is_object().then(|| "Local cost history unavailable".to_string()),
+            error: row["error"]
+                .is_object()
+                .then(|| "Local cost history unavailable".to_string()),
             daily,
             models,
             provider,
@@ -359,7 +414,10 @@ mod tests {
         assert_eq!(p.windows.len(), 2);
         assert_eq!(p.session().unwrap().used, 24.0);
         assert_eq!(p.weekly().unwrap().label, "Weekly");
-        assert_eq!(p.session().unwrap().pace.as_ref().unwrap().expected_used, Some(88.0));
+        assert_eq!(
+            p.session().unwrap().pace.as_ref().unwrap().expected_used,
+            Some(88.0)
+        );
         assert!(p.error.is_none());
         assert!(p.status.as_ref().unwrap().is_ok());
     }

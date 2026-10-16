@@ -2,7 +2,9 @@
 
 use crate::config::TrayStyle;
 use ab_glyph::{Font, FontVec, PxScale, ScaleFont};
-use resvg::tiny_skia::{self, Color, FillRule, LineCap, Paint, PathBuilder, Pixmap, Stroke, Transform};
+use resvg::tiny_skia::{
+    self, Color, FillRule, LineCap, Paint, PathBuilder, Pixmap, Stroke, Transform,
+};
 use std::f32::consts::PI;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -33,10 +35,18 @@ fn rgba(c: (u8, u8, u8), a: f32) -> Color {
 
 impl IconSpec {
     fn fg(&self) -> (u8, u8, u8) {
-        if self.dark_panel { (252, 252, 252) } else { (35, 38, 41) }
+        if self.dark_panel {
+            (252, 252, 252)
+        } else {
+            (35, 38, 41)
+        }
     }
     fn track(&self) -> Color {
-        if self.dark_panel { rgba((255, 255, 255), 0.26) } else { rgba((0, 0, 0), 0.20) }
+        if self.dark_panel {
+            rgba((255, 255, 255), 0.26)
+        } else {
+            rgba((0, 0, 0), 0.20)
+        }
     }
     fn color(&self, level: Level) -> Color {
         match level {
@@ -64,18 +74,48 @@ fn rounded(pixmap: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, color: Color) {
     // Capsule: two half-circles joined by straight edges.
     pb.move_to(x + r, y);
     pb.line_to(x + w - r, y);
-    pb.cubic_to(x + w - r + r * 0.5523, y, x + w, y + r - r * 0.5523, x + w, y + r);
-    pb.cubic_to(x + w, y + r + r * 0.5523, x + w - r + r * 0.5523, y + h, x + w - r, y + h);
+    pb.cubic_to(
+        x + w - r + r * 0.5523,
+        y,
+        x + w,
+        y + r - r * 0.5523,
+        x + w,
+        y + r,
+    );
+    pb.cubic_to(
+        x + w,
+        y + r + r * 0.5523,
+        x + w - r + r * 0.5523,
+        y + h,
+        x + w - r,
+        y + h,
+    );
     pb.line_to(x + r, y + h);
     pb.cubic_to(x + r - r * 0.5523, y + h, x, y + r + r * 0.5523, x, y + r);
     pb.cubic_to(x, y + r - r * 0.5523, x + r - r * 0.5523, y, x + r, y);
     pb.close();
     if let Some(path) = pb.finish() {
-        pixmap.fill_path(&path, &paint(color), FillRule::Winding, Transform::identity(), None);
+        pixmap.fill_path(
+            &path,
+            &paint(color),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
-fn bar(pixmap: &mut Pixmap, spec: &IconSpec, x: f32, y: f32, w: f32, h: f32, value: Option<f32>, level: Level) {
+#[allow(clippy::too_many_arguments)]
+fn bar(
+    pixmap: &mut Pixmap,
+    spec: &IconSpec,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    value: Option<f32>,
+    level: Level,
+) {
     rounded(pixmap, x, y, w, h, spec.track());
     if let Some(v) = value {
         let v = v.clamp(0.0, 1.0);
@@ -85,7 +125,17 @@ fn bar(pixmap: &mut Pixmap, spec: &IconSpec, x: f32, y: f32, w: f32, h: f32, val
     }
 }
 
-fn arc(pixmap: &mut Pixmap, cx: f32, cy: f32, r: f32, from: f32, sweep: f32, width: f32, color: Color) {
+#[allow(clippy::too_many_arguments)]
+fn arc(
+    pixmap: &mut Pixmap,
+    cx: f32,
+    cy: f32,
+    r: f32,
+    from: f32,
+    sweep: f32,
+    width: f32,
+    color: Color,
+) {
     if sweep <= 0.001 {
         return;
     }
@@ -94,23 +144,56 @@ fn arc(pixmap: &mut Pixmap, cx: f32, cy: f32, r: f32, from: f32, sweep: f32, wid
     for i in 0..=steps {
         let a = from + sweep * i as f32 / steps as f32;
         let (x, y) = (cx + r * a.cos(), cy + r * a.sin());
-        if i == 0 { pb.move_to(x, y) } else { pb.line_to(x, y) }
+        if i == 0 {
+            pb.move_to(x, y)
+        } else {
+            pb.line_to(x, y)
+        }
     }
     if let Some(path) = pb.finish() {
-        let stroke = Stroke { width, line_cap: LineCap::Round, ..Stroke::default() };
+        let stroke = Stroke {
+            width,
+            line_cap: LineCap::Round,
+            ..Stroke::default()
+        };
         pixmap.stroke_path(&path, &paint(color), &stroke, Transform::identity(), None);
     }
 }
 
-fn ring(pixmap: &mut Pixmap, spec: &IconSpec, r: f32, width: f32, value: Option<f32>, level: Level, s: f32) {
+fn ring(
+    pixmap: &mut Pixmap,
+    spec: &IconSpec,
+    r: f32,
+    width: f32,
+    value: Option<f32>,
+    level: Level,
+    s: f32,
+) {
     let c = s / 2.0;
     arc(pixmap, c, c, r, 0.0, 2.0 * PI, width, spec.track());
     if let Some(v) = value {
-        arc(pixmap, c, c, r, -PI / 2.0, 2.0 * PI * v.clamp(0.0, 1.0), width, spec.color(level));
+        arc(
+            pixmap,
+            c,
+            c,
+            r,
+            -PI / 2.0,
+            2.0 * PI * v.clamp(0.0, 1.0),
+            width,
+            spec.color(level),
+        );
     }
 }
 
-fn draw_text(pixmap: &mut Pixmap, font: &FontVec, text: &str, max_w: f32, max_h: f32, top: f32, color: (u8, u8, u8)) {
+fn draw_text(
+    pixmap: &mut Pixmap,
+    font: &FontVec,
+    text: &str,
+    max_w: f32,
+    max_h: f32,
+    top: f32,
+    color: (u8, u8, u8),
+) {
     let probe = PxScale::from(100.0);
     let sf = font.as_scaled(probe);
     let width: f32 = text.chars().map(|c| sf.h_advance(font.glyph_id(c))).sum();
@@ -136,7 +219,8 @@ fn draw_text(pixmap: &mut Pixmap, font: &FontVec, text: &str, max_w: f32, max_h:
                 }
                 let i = ((py * pw + px) * 4) as usize;
                 let a = cov.clamp(0.0, 1.0);
-                let blend = |dst: u8, src: u8| (src as f32 * a + dst as f32 * (1.0 - a)).round() as u8;
+                let blend =
+                    |dst: u8, src: u8| (src as f32 * a + dst as f32 * (1.0 - a)).round() as u8;
                 data[i] = blend(data[i], color.0);
                 data[i + 1] = blend(data[i + 1], color.1);
                 data[i + 2] = blend(data[i + 2], color.2);
@@ -147,38 +231,97 @@ fn draw_text(pixmap: &mut Pixmap, font: &FontVec, text: &str, max_w: f32, max_h:
 }
 
 fn draw_svg(pixmap: &mut Pixmap, svg: &[u8], x: f32, y: f32, size: f32, tint: Color) {
-    let Ok(tree) = resvg::usvg::Tree::from_data(svg, &resvg::usvg::Options::default()) else { return };
-    let Some(mut layer) = Pixmap::new(pixmap.width(), pixmap.height()) else { return };
+    let Ok(tree) = resvg::usvg::Tree::from_data(svg, &resvg::usvg::Options::default()) else {
+        return;
+    };
+    let Some(mut layer) = Pixmap::new(pixmap.width(), pixmap.height()) else {
+        return;
+    };
     let ts = tree.size();
     let k = size / ts.width().max(ts.height());
-    resvg::render(&tree, Transform::from_scale(k, k).post_translate(x, y), &mut layer.as_mut());
+    resvg::render(
+        &tree,
+        Transform::from_scale(k, k).post_translate(x, y),
+        &mut layer.as_mut(),
+    );
     // Template icons: keep alpha, replace colour.
     let c = tint.to_color_u8();
     for px in layer.pixels_mut() {
         let a = px.alpha() as f32 / 255.0 * tint.alpha();
         let pm = |v: u8| (v as f32 * a) as u8;
-        *px = tiny_skia::PremultipliedColorU8::from_rgba(pm(c.red()), pm(c.green()), pm(c.blue()), (a * 255.0) as u8).unwrap();
+        *px = tiny_skia::PremultipliedColorU8::from_rgba(
+            pm(c.red()),
+            pm(c.green()),
+            pm(c.blue()),
+            (a * 255.0) as u8,
+        )
+        .unwrap();
     }
-    pixmap.draw_pixmap(0, 0, layer.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), None);
+    pixmap.draw_pixmap(
+        0,
+        0,
+        layer.as_ref(),
+        &tiny_skia::PixmapPaint::default(),
+        Transform::identity(),
+        None,
+    );
 }
 
 pub fn render(spec: &IconSpec, font: Option<&FontVec>, size: u32) -> ksni::Icon {
     let mut pixmap = Pixmap::new(size, size).unwrap();
     let s = size as f32;
-    let style = if spec.style == TrayStyle::Percent && (font.is_none() || spec.text.is_none()) { TrayStyle::Bars } else { spec.style };
+    let style = if spec.style == TrayStyle::Percent && (font.is_none() || spec.text.is_none()) {
+        TrayStyle::Bars
+    } else {
+        spec.style
+    };
     match style {
         TrayStyle::Bars => {
             let pad = (s * 0.06).max(1.0);
             let h = s * 0.30;
             let gap = s * 0.14;
             let top = (s - 2.0 * h - gap) / 2.0;
-            bar(&mut pixmap, spec, pad, top, s - 2.0 * pad, h, spec.primary, spec.primary_level);
-            bar(&mut pixmap, spec, pad, top + h + gap, s - 2.0 * pad, h, spec.secondary, spec.secondary_level);
+            bar(
+                &mut pixmap,
+                spec,
+                pad,
+                top,
+                s - 2.0 * pad,
+                h,
+                spec.primary,
+                spec.primary_level,
+            );
+            bar(
+                &mut pixmap,
+                spec,
+                pad,
+                top + h + gap,
+                s - 2.0 * pad,
+                h,
+                spec.secondary,
+                spec.secondary_level,
+            );
         }
         TrayStyle::Ring => {
             let w = s * 0.15;
-            ring(&mut pixmap, spec, s / 2.0 - w / 2.0 - s * 0.02, w, spec.primary, spec.primary_level, s);
-            ring(&mut pixmap, spec, s / 2.0 - w * 1.5 - s * 0.08, w * 0.85, spec.secondary, spec.secondary_level, s);
+            ring(
+                &mut pixmap,
+                spec,
+                s / 2.0 - w / 2.0 - s * 0.02,
+                w,
+                spec.primary,
+                spec.primary_level,
+                s,
+            );
+            ring(
+                &mut pixmap,
+                spec,
+                s / 2.0 - w * 1.5 - s * 0.08,
+                w * 0.85,
+                spec.secondary,
+                spec.secondary_level,
+                s,
+            );
         }
         TrayStyle::Percent => {
             let bar_h = (s * 0.16).max(2.0);
@@ -190,18 +333,57 @@ pub fn render(spec: &IconSpec, font: Option<&FontVec>, size: u32) -> ksni::Icon 
                     (c.red(), c.green(), c.blue())
                 }
             };
-            draw_text(&mut pixmap, font.unwrap(), spec.text.as_deref().unwrap_or("–"), s * 0.98, s - bar_h - s * 0.14, 0.0, color);
-            bar(&mut pixmap, spec, s * 0.04, s - bar_h - s * 0.02, s * 0.92, bar_h, spec.primary, spec.primary_level);
+            draw_text(
+                &mut pixmap,
+                font.unwrap(),
+                spec.text.as_deref().unwrap_or("–"),
+                s * 0.98,
+                s - bar_h - s * 0.14,
+                0.0,
+                color,
+            );
+            bar(
+                &mut pixmap,
+                spec,
+                s * 0.04,
+                s - bar_h - s * 0.02,
+                s * 0.92,
+                bar_h,
+                spec.primary,
+                spec.primary_level,
+            );
         }
         TrayStyle::Logo => {
             let bar_h = (s * 0.16).max(2.0);
             let logo = s - bar_h - s * 0.10;
-            let tint = if spec.primary_level == Level::Normal { rgba(spec.brand, 1.0) } else { spec.color(spec.primary_level) };
+            let tint = if spec.primary_level == Level::Normal {
+                rgba(spec.brand, 1.0)
+            } else {
+                spec.color(spec.primary_level)
+            };
             match crate::icons::provider_svg(&spec.provider) {
                 Some(svg) => draw_svg(&mut pixmap, svg, (s - logo) / 2.0, 0.0, logo, tint),
-                None => arc(&mut pixmap, s / 2.0, logo / 2.0, logo * 0.35, 0.0, 2.0 * PI, logo * 0.2, tint),
+                None => arc(
+                    &mut pixmap,
+                    s / 2.0,
+                    logo / 2.0,
+                    logo * 0.35,
+                    0.0,
+                    2.0 * PI,
+                    logo * 0.2,
+                    tint,
+                ),
             }
-            bar(&mut pixmap, spec, s * 0.04, s - bar_h - s * 0.02, s * 0.92, bar_h, spec.primary, spec.primary_level);
+            bar(
+                &mut pixmap,
+                spec,
+                s * 0.04,
+                s - bar_h - s * 0.02,
+                s * 0.92,
+                bar_h,
+                spec.primary,
+                spec.primary_level,
+            );
         }
     }
     // Premultiplied RGBA → straight ARGB (network byte order).
@@ -210,7 +392,11 @@ pub fn render(spec: &IconSpec, font: Option<&FontVec>, size: u32) -> ksni::Icon 
         let c = px.demultiply();
         data.extend_from_slice(&[c.alpha(), c.red(), c.green(), c.blue()]);
     }
-    ksni::Icon { width: size as i32, height: size as i32, data }
+    ksni::Icon {
+        width: size as i32,
+        height: size as i32,
+        data,
+    }
 }
 
 /// Renders the app icon (provider logo, untinted brand colour) for windows/desktop files.
@@ -218,10 +404,16 @@ pub fn render_rgba_logo(provider: &str, brand: (u8, u8, u8), size: u32) -> Optio
     let svg = crate::icons::provider_svg(provider)?;
     let mut pixmap = Pixmap::new(size, size)?;
     draw_svg(&mut pixmap, svg, 0.0, 0.0, size as f32, rgba(brand, 1.0));
-    Some(pixmap.pixels().iter().flat_map(|p| {
-        let c = p.demultiply();
-        [c.red(), c.green(), c.blue(), c.alpha()]
-    }).collect())
+    Some(
+        pixmap
+            .pixels()
+            .iter()
+            .flat_map(|p| {
+                let c = p.demultiply();
+                [c.red(), c.green(), c.blue(), c.alpha()]
+            })
+            .collect(),
+    )
 }
 
 pub fn brand_color(provider: &str) -> (u8, u8, u8) {

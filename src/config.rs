@@ -18,7 +18,12 @@ pub enum TrayStyle {
 }
 
 impl TrayStyle {
-    pub const ALL: [TrayStyle; 4] = [TrayStyle::Bars, TrayStyle::Ring, TrayStyle::Percent, TrayStyle::Logo];
+    pub const ALL: [TrayStyle; 4] = [
+        TrayStyle::Bars,
+        TrayStyle::Ring,
+        TrayStyle::Percent,
+        TrayStyle::Logo,
+    ];
     pub fn label(self) -> &'static str {
         match self {
             TrayStyle::Bars => "Two bars (session + weekly)",
@@ -38,7 +43,11 @@ pub enum TrayWindow {
 }
 
 impl TrayWindow {
-    pub const ALL: [TrayWindow; 3] = [TrayWindow::Session, TrayWindow::Weekly, TrayWindow::Tightest];
+    pub const ALL: [TrayWindow; 3] = [
+        TrayWindow::Session,
+        TrayWindow::Weekly,
+        TrayWindow::Tightest,
+    ];
     pub fn label(self) -> &'static str {
         match self {
             TrayWindow::Session => "Session (5h)",
@@ -94,15 +103,21 @@ impl Default for Config {
 }
 
 pub fn config_path() -> PathBuf {
-    dirs::config_dir().unwrap_or_else(|| PathBuf::from("~/.config")).join("codexbar-tray/config.json")
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("~/.config"))
+        .join("codexbar-tray/config.json")
 }
 
 pub fn cache_path() -> PathBuf {
-    dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("codexbar-tray/snapshot.json")
+    dirs::cache_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("codexbar-tray/snapshot.json")
 }
 
 pub fn runtime_dir() -> PathBuf {
-    dirs::runtime_dir().unwrap_or_else(|| std::env::temp_dir().join(format!("codexbar-{}", unsafe { libc::getuid() })))
+    dirs::runtime_dir().unwrap_or_else(|| {
+        std::env::temp_dir().join(format!("codexbar-{}", unsafe { libc::getuid() }))
+    })
 }
 
 pub fn socket_path() -> PathBuf {
@@ -122,7 +137,8 @@ impl Config {
             .unwrap_or_else(|| {
                 // First run: inherit the CLI path the CodexBar Qt app was configured with.
                 let mut c = Config::default();
-                if let Some(old) = dirs::config_dir().and_then(|d| std::fs::read(d.join("codexbar/linux.json")).ok())
+                if let Some(old) = dirs::config_dir()
+                    .and_then(|d| std::fs::read(d.join("codexbar/linux.json")).ok())
                     .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
                 {
                     if let Some(exe) = old["executable"].as_str() {
@@ -137,7 +153,12 @@ impl Config {
 
     pub fn sanitize(&mut self) {
         self.refresh_secs = self.refresh_secs.clamp(60, 3600);
-        self.providers.retain(|p| !p.is_empty() && p.len() <= 40 && p.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'));
+        self.providers.retain(|p| {
+            !p.is_empty()
+                && p.len() <= 40
+                && p.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        });
         self.providers.dedup();
         if self.providers.is_empty() {
             self.providers.push("claude".into());
@@ -184,7 +205,9 @@ impl Config {
 
 fn resolve_executable(name: &str) -> PathBuf {
     let expanded = if let Some(rest) = name.strip_prefix("~/") {
-        dirs::home_dir().map(|h| h.join(rest)).unwrap_or_else(|| PathBuf::from(name))
+        dirs::home_dir()
+            .map(|h| h.join(rest))
+            .unwrap_or_else(|| PathBuf::from(name))
     } else {
         PathBuf::from(name)
     };
@@ -195,7 +218,10 @@ fn resolve_executable(name: &str) -> PathBuf {
         .map(|p| std::env::split_paths(&p).collect())
         .unwrap_or_default();
     // A portable bundle can keep the CLI beside this executable.
-    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+    if let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf))
+    {
         dirs_to_search.push(dir.join("codexbar-cli"));
         dirs_to_search.push(dir);
     }
@@ -212,5 +238,7 @@ fn resolve_executable(name: &str) -> PathBuf {
 
 fn is_executable(p: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    p.metadata().map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+    p.metadata()
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
 }

@@ -84,9 +84,17 @@ pub fn tokens(v: u64) -> String {
 pub fn model_name(raw: &str) -> String {
     let s = raw.strip_prefix("claude-").unwrap_or(raw);
     let mut parts = s.split('-');
-    let Some(family) = parts.next() else { return raw.into() };
-    let version: Vec<&str> = parts.take_while(|p| p.chars().all(|c| c.is_ascii_digit()) && p.len() <= 2).collect();
-    let mut name = family.chars().next().map(|c| c.to_uppercase().collect::<String>() + &family[1..]).unwrap_or_default();
+    let Some(family) = parts.next() else {
+        return raw.into();
+    };
+    let version: Vec<&str> = parts
+        .take_while(|p| p.chars().all(|c| c.is_ascii_digit()) && p.len() <= 2)
+        .collect();
+    let mut name = family
+        .chars()
+        .next()
+        .map(|c| c.to_uppercase().collect::<String>() + &family[1..])
+        .unwrap_or_default();
     if !version.is_empty() {
         name.push(' ');
         name.push_str(&version.join("."));

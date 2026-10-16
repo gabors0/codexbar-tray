@@ -9,8 +9,8 @@ use crate::model::{provider_name, CostSummary, ProviderUsage, Snapshot, Window};
 use crate::theme::{self, Rgb};
 use chrono::{Duration as ChronoDuration, Local};
 use eframe::egui::{
-    self, pos2, vec2, Align, Align2, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Frame, Layout, Margin, Rect,
-    RichText, Sense, Stroke, StrokeKind, Ui,
+    self, pos2, vec2, Align, Align2, Color32, CornerRadius, FontData, FontDefinitions, FontFamily,
+    FontId, Frame, Layout, Margin, Rect, RichText, Sense, Stroke, StrokeKind, Ui,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -18,7 +18,18 @@ use std::time::{Duration, Instant};
 
 const WIDTH: f32 = 380.0;
 const MAX_HEIGHT: f32 = 820.0;
-const KNOWN: [&str; 10] = ["claude", "codex", "gemini", "cursor", "copilot", "openrouter", "zai", "opencode", "antigravity", "kiro"];
+const KNOWN: [&str; 10] = [
+    "claude",
+    "codex",
+    "gemini",
+    "cursor",
+    "copilot",
+    "openrouter",
+    "zai",
+    "opencode",
+    "antigravity",
+    "kiro",
+];
 
 #[derive(Clone, Copy)]
 struct Palette {
@@ -43,7 +54,11 @@ fn c(rgb: Rgb) -> Color32 {
 impl Palette {
     fn from_desktop(d: &theme::Desktop) -> Self {
         let (bg, fg) = (d.window_bg, d.window_fg);
-        let card = if d.dark { bg.mix(fg, 0.055) } else { bg.mix(Rgb(255, 255, 255), 0.7) };
+        let card = if d.dark {
+            bg.mix(fg, 0.055)
+        } else {
+            bg.mix(Rgb(255, 255, 255), 0.7)
+        };
         Self {
             bg: c(bg),
             card: c(card),
@@ -79,10 +94,17 @@ fn medium() -> FontFamily {
 fn install_fonts(ctx: &egui::Context, family: &str) {
     let mut fonts = FontDefinitions::default();
     let mut add = |key: &str, style: &str, fam: FontFamily| {
-        let data = theme::font_file(family, style).or_else(|| theme::font_file("sans-serif", style));
-        let mut chain = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+        let data =
+            theme::font_file(family, style).or_else(|| theme::font_file("sans-serif", style));
+        let mut chain = fonts
+            .families
+            .get(&FontFamily::Proportional)
+            .cloned()
+            .unwrap_or_default();
         if let Some(bytes) = data {
-            fonts.font_data.insert(key.into(), Arc::new(FontData::from_owned(bytes)));
+            fonts
+                .font_data
+                .insert(key.into(), Arc::new(FontData::from_owned(bytes)));
             chain.insert(0, key.into());
         }
         fonts.families.insert(fam, chain);
@@ -90,9 +112,17 @@ fn install_fonts(ctx: &egui::Context, family: &str) {
     add("ui-medium", "Medium", medium());
     add("ui-semibold", "SemiBold", semibold());
     add("ui-bold", "Bold", bold());
-    if let Some(bytes) = theme::font_file(family, "Regular").or_else(|| theme::font_file("sans-serif", "Regular")) {
-        fonts.font_data.insert("ui-regular".into(), Arc::new(FontData::from_owned(bytes)));
-        fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "ui-regular".into());
+    if let Some(bytes) =
+        theme::font_file(family, "Regular").or_else(|| theme::font_file("sans-serif", "Regular"))
+    {
+        fonts
+            .font_data
+            .insert("ui-regular".into(), Arc::new(FontData::from_owned(bytes)));
+        fonts
+            .families
+            .entry(FontFamily::Proportional)
+            .or_default()
+            .insert(0, "ui-regular".into());
     }
     ctx.set_fonts(fonts);
 }
@@ -115,6 +145,7 @@ pub struct PopupApp {
     had_focus: bool,
     opened: Instant,
     last_height: f32,
+    resized_at: Instant,
     closing: bool,
     frames: u32,
     snapshot_to: Option<String>,
@@ -126,7 +157,11 @@ impl PopupApp {
         egui_extras::install_image_loaders(ctx);
         install_fonts(ctx, desktop.font_family.as_deref().unwrap_or("sans-serif"));
         let pal = Palette::from_desktop(desktop);
-        let mut visuals = if pal.dark { egui::Visuals::dark() } else { egui::Visuals::light() };
+        let mut visuals = if pal.dark {
+            egui::Visuals::dark()
+        } else {
+            egui::Visuals::light()
+        };
         visuals.panel_fill = pal.bg;
         visuals.window_fill = pal.bg;
         visuals.extreme_bg_color = pal.card;
@@ -142,10 +177,22 @@ impl PopupApp {
             s.spacing.item_spacing = vec2(8.0, 6.0);
             s.spacing.button_padding = vec2(10.0, 5.0);
             s.spacing.slider_width = 200.0;
-            s.text_styles.insert(egui::TextStyle::Body, FontId::new(13.5, FontFamily::Proportional));
-            s.text_styles.insert(egui::TextStyle::Button, FontId::new(13.0, medium()));
-            s.text_styles.insert(egui::TextStyle::Small, FontId::new(11.5, FontFamily::Proportional));
-            for w in [&mut s.visuals.widgets.inactive, &mut s.visuals.widgets.hovered, &mut s.visuals.widgets.active, &mut s.visuals.widgets.noninteractive] {
+            s.text_styles.insert(
+                egui::TextStyle::Body,
+                FontId::new(13.5, FontFamily::Proportional),
+            );
+            s.text_styles
+                .insert(egui::TextStyle::Button, FontId::new(13.0, medium()));
+            s.text_styles.insert(
+                egui::TextStyle::Small,
+                FontId::new(11.5, FontFamily::Proportional),
+            );
+            for w in [
+                &mut s.visuals.widgets.inactive,
+                &mut s.visuals.widgets.hovered,
+                &mut s.visuals.widgets.active,
+                &mut s.visuals.widgets.noninteractive,
+            ] {
                 w.corner_radius = CornerRadius::same(8);
             }
         });
@@ -161,7 +208,10 @@ impl PopupApp {
                 .ok()
                 .and_then(|b| serde_json::from_slice::<Snapshot>(&b).ok())
                 .unwrap_or_default();
-            *state.lock().unwrap() = Some(State { snapshot, config: Config::load() });
+            *state.lock().unwrap() = Some(State {
+                snapshot,
+                config: Config::load(),
+            });
         }
         {
             let (state, connected, ctx) = (state.clone(), connected.clone(), ctx.clone());
@@ -177,12 +227,21 @@ impl PopupApp {
             });
         }
         ipc::send(&Request::RefreshIfStale { max_age: 60 });
-        let selected = state.lock().unwrap().as_ref().map(|s| s.config.providers[0].clone()).unwrap_or_else(|| "claude".into());
+        let selected = state
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|s| s.config.providers[0].clone())
+            .unwrap_or_else(|| "claude".into());
         Self {
             state,
             connected,
             pal,
-            view: if std::env::var("CODEXBAR_VIEW").as_deref() == Ok("settings") { View::Settings } else { View::Usage },
+            view: if std::env::var("CODEXBAR_VIEW").as_deref() == Ok("settings") {
+                View::Settings
+            } else {
+                View::Usage
+            },
             selected,
             draft: None,
             new_provider: String::new(),
@@ -190,6 +249,7 @@ impl PopupApp {
             had_focus: false,
             opened: Instant::now(),
             last_height: 0.0,
+            resized_at: Instant::now(),
             closing: false,
             frames: 0,
             snapshot_to: std::env::var("CODEXBAR_SNAPSHOT_TO").ok(),
@@ -210,10 +270,16 @@ impl PopupApp {
 
 // ---------- small painted widgets ----------
 
-fn icon_button(ui: &mut Ui, pal: &Palette, tooltip: &str, paint: impl FnOnce(&egui::Painter, Rect, Color32)) -> egui::Response {
+fn icon_button(
+    ui: &mut Ui,
+    pal: &Palette,
+    tooltip: &str,
+    paint: impl FnOnce(&egui::Painter, Rect, Color32),
+) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(28.0, 28.0), Sense::click());
     if resp.hovered() {
-        ui.painter().rect_filled(rect, CornerRadius::same(7), pal.hover);
+        ui.painter()
+            .rect_filled(rect, CornerRadius::same(7), pal.hover);
     }
     let color = if resp.hovered() { pal.text } else { pal.muted };
     paint(ui.painter(), rect.shrink(7.0), color);
@@ -238,7 +304,11 @@ fn paint_refresh(p: &egui::Painter, r: Rect, color: Color32, angle: f32) {
     let tangent = vec2(-a.sin(), a.cos());
     let normal = vec2(a.cos(), a.sin());
     p.add(egui::Shape::convex_polygon(
-        vec![end + tangent * 3.2, end + normal * 2.6 - tangent * 0.8, end - normal * 2.6 - tangent * 0.8],
+        vec![
+            end + tangent * 3.2,
+            end + normal * 2.6 - tangent * 0.8,
+            end - normal * 2.6 - tangent * 0.8,
+        ],
         color,
         Stroke::NONE,
     ));
@@ -247,14 +317,20 @@ fn paint_refresh(p: &egui::Painter, r: Rect, color: Color32, angle: f32) {
 fn paint_sliders(p: &egui::Painter, r: Rect, color: Color32) {
     for (i, knob) in [0.3f32, 0.7, 0.45].iter().enumerate() {
         let y = r.top() + r.height() * (i as f32 + 0.5) / 3.0;
-        p.line_segment([pos2(r.left(), y), pos2(r.right(), y)], Stroke::new(1.4, color));
+        p.line_segment(
+            [pos2(r.left(), y), pos2(r.right(), y)],
+            Stroke::new(1.4, color),
+        );
         p.circle_filled(pos2(r.left() + r.width() * knob, y), 2.4, color);
     }
 }
 
 fn paint_back(p: &egui::Painter, r: Rect, color: Color32) {
     let c = r.center();
-    p.add(egui::Shape::line(vec![c + vec2(3.0, -6.0), c + vec2(-3.0, 0.0), c + vec2(3.0, 6.0)], Stroke::new(1.8, color)));
+    p.add(egui::Shape::line(
+        vec![c + vec2(3.0, -6.0), c + vec2(-3.0, 0.0), c + vec2(3.0, 6.0)],
+        Stroke::new(1.8, color),
+    ));
 }
 
 fn toggle(ui: &mut Ui, pal: &Palette, on: &mut bool, label: &str, hint: Option<&str>) -> bool {
@@ -274,36 +350,58 @@ fn toggle(ui: &mut Ui, pal: &Palette, on: &mut bool, label: &str, hint: Option<&
             }
             let t = ui.ctx().animate_bool(resp.id, *on);
             let track = pal.track.lerp_to_gamma(brand("claude"), t);
-            ui.painter().rect_filled(rect, CornerRadius::same(10), track);
+            ui.painter()
+                .rect_filled(rect, CornerRadius::same(10), track);
             let x = egui::lerp(rect.left() + 10.0..=rect.right() - 10.0, t);
-            ui.painter().circle_filled(pos2(x, rect.center().y), 7.0, Color32::WHITE);
+            ui.painter()
+                .circle_filled(pos2(x, rect.center().y), 7.0, Color32::WHITE);
         });
     });
     changed
 }
 
-fn segmented<T: PartialEq + Copy>(ui: &mut Ui, pal: &Palette, value: &mut T, options: &[(T, &str)]) -> bool {
+fn segmented<T: PartialEq + Copy>(
+    ui: &mut Ui,
+    pal: &Palette,
+    value: &mut T,
+    options: &[(T, &str)],
+) -> bool {
     let mut changed = false;
     let width = ui.available_width();
     let h = 28.0;
     let (rect, _) = ui.allocate_exact_size(vec2(width, h), Sense::hover());
-    ui.painter().rect_filled(rect, CornerRadius::same(8), pal.track);
+    ui.painter()
+        .rect_filled(rect, CornerRadius::same(8), pal.track);
     let w = width / options.len() as f32;
     for (i, (opt, label)) in options.iter().enumerate() {
-        let r = Rect::from_min_size(pos2(rect.left() + w * i as f32, rect.top()), vec2(w, h)).shrink(2.0);
+        let r = Rect::from_min_size(pos2(rect.left() + w * i as f32, rect.top()), vec2(w, h))
+            .shrink(2.0);
         let resp = ui.interact(r, ui.scope_id().with(("seg", i, label)), Sense::click());
         let selected = *value == *opt;
         if selected {
             ui.painter().rect_filled(r, CornerRadius::same(6), pal.card);
-            ui.painter().rect_stroke(r, CornerRadius::same(6), Stroke::new(1.0, pal.border), StrokeKind::Inside);
+            ui.painter().rect_stroke(
+                r,
+                CornerRadius::same(6),
+                Stroke::new(1.0, pal.border),
+                StrokeKind::Inside,
+            );
         } else if resp.hovered() {
-            ui.painter().rect_filled(r, CornerRadius::same(6), pal.hover);
+            ui.painter()
+                .rect_filled(r, CornerRadius::same(6), pal.hover);
         }
         ui.painter().text(
             r.center(),
             Align2::CENTER_CENTER,
             *label,
-            FontId::new(12.5, if selected { semibold() } else { FontFamily::Proportional }),
+            FontId::new(
+                12.5,
+                if selected {
+                    semibold()
+                } else {
+                    FontFamily::Proportional
+                },
+            ),
             if selected { pal.text } else { pal.muted },
         );
         if resp.clicked() && !selected {
@@ -361,7 +459,12 @@ impl PopupApp {
             ui.spacing_mut().item_spacing.x = 8.0;
             let id = p.map(|p| p.id.as_str()).unwrap_or(self.selected.as_str());
             provider_logo(ui, id, 22.0, brand(id));
-            ui.label(RichText::new(provider_name(id)).size(17.0).family(semibold()).color(pal.text));
+            ui.label(
+                RichText::new(provider_name(id))
+                    .size(17.0)
+                    .family(semibold())
+                    .color(pal.text),
+            );
             if let Some(plan) = p.and_then(|p| p.plan.as_deref()) {
                 pill(ui, plan, brand(id));
             }
@@ -370,12 +473,27 @@ impl PopupApp {
                 if icon_button(ui, &pal, "Settings", paint_sliders).clicked() {
                     self.view = View::Settings;
                     self.draft = Some(cfg.clone());
-                    self.thresholds_text = cfg.notify_thresholds.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+                    self.thresholds_text = cfg
+                        .notify_thresholds
+                        .iter()
+                        .map(|t| t.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
                 }
                 let busy = snap.busy;
-                let angle = if busy { ui.input(|i| i.time) as f32 * 5.0 } else { 0.0 };
-                let tip = if busy { "Refreshing…" } else { "Refresh (Ctrl+R)" };
-                if icon_button(ui, &pal, tip, |p, r, col| paint_refresh(p, r, col, angle)).clicked() && !busy {
+                let angle = if busy {
+                    ui.input(|i| i.time) as f32 * 5.0
+                } else {
+                    0.0
+                };
+                let tip = if busy {
+                    "Refreshing…"
+                } else {
+                    "Refresh (Ctrl+R)"
+                };
+                if icon_button(ui, &pal, tip, |p, r, col| paint_refresh(p, r, col, angle)).clicked()
+                    && !busy
+                {
                     ipc::send(&Request::Refresh);
                 }
                 if busy {
@@ -386,9 +504,21 @@ impl PopupApp {
         // Status line
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
-            let (dot, text) = match (p.and_then(|p| p.status.as_ref()), p.and_then(|p| p.error.as_ref())) {
-                (_, Some(_)) if p.is_some_and(|p| p.windows.is_empty()) => (pal.bad, "Usage unavailable".to_string()),
-                (Some(s), _) if !s.is_ok() => (if s.indicator == "minor" { pal.warn } else { pal.bad }, s.description.clone()),
+            let (dot, text) = match (
+                p.and_then(|p| p.status.as_ref()),
+                p.and_then(|p| p.error.as_ref()),
+            ) {
+                (_, Some(_)) if p.is_some_and(|p| p.windows.is_empty()) => {
+                    (pal.bad, "Usage unavailable".to_string())
+                }
+                (Some(s), _) if !s.is_ok() => (
+                    if s.indicator == "minor" {
+                        pal.warn
+                    } else {
+                        pal.bad
+                    },
+                    s.description.clone(),
+                ),
                 (Some(s), _) => (pal.good, s.description.clone()),
                 (None, _) => (pal.faint, String::new()),
             };
@@ -401,10 +531,22 @@ impl PopupApp {
             } else {
                 format!("updated {}", format::ago(snap.updated_at))
             };
-            let line = if text.is_empty() { updated } else { format!("{text} · {updated}") };
+            let line = if text.is_empty() {
+                updated
+            } else {
+                format!("{text} · {updated}")
+            };
             let resp = ui.label(RichText::new(line).size(12.0).color(pal.muted));
-            if let Some(url) = p.and_then(|p| p.status.as_ref()).map(|s| s.url.clone()).filter(|u| !u.is_empty()) {
-                if resp.on_hover_text("Open status page").interact(Sense::click()).clicked() {
+            if let Some(url) = p
+                .and_then(|p| p.status.as_ref())
+                .map(|s| s.url.clone())
+                .filter(|u| !u.is_empty())
+            {
+                if resp
+                    .on_hover_text("Open status page")
+                    .interact(Sense::click())
+                    .clicked()
+                {
                     crate::daemon::open_url(&url);
                 }
             }
@@ -426,16 +568,39 @@ impl PopupApp {
                     Some(u) => format!("{}  {:.0}%", provider_name(id), cfg.display_value(u)),
                     None => provider_name(id),
                 };
-                let galley = ui.painter().layout_no_wrap(label.clone(), FontId::new(12.5, medium()), pal.text);
+                let galley = ui.painter().layout_no_wrap(
+                    label.clone(),
+                    FontId::new(12.5, medium()),
+                    pal.text,
+                );
                 let size = vec2(galley.size().x + 38.0, 28.0);
                 let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
-                let fill = if selected { pal.card } else if resp.hovered() { pal.hover } else { Color32::TRANSPARENT };
+                let fill = if selected {
+                    pal.card
+                } else if resp.hovered() {
+                    pal.hover
+                } else {
+                    Color32::TRANSPARENT
+                };
                 ui.painter().rect_filled(rect, CornerRadius::same(14), fill);
                 if selected {
-                    ui.painter().rect_stroke(rect, CornerRadius::same(14), Stroke::new(1.0, pal.border), StrokeKind::Inside);
+                    ui.painter().rect_stroke(
+                        rect,
+                        CornerRadius::same(14),
+                        Stroke::new(1.0, pal.border),
+                        StrokeKind::Inside,
+                    );
                 }
-                let icon_rect = Rect::from_center_size(pos2(rect.left() + 16.0, rect.center().y), vec2(14.0, 14.0));
-                logo_at(ui, id, icon_rect, if selected { brand(id) } else { pal.muted });
+                let icon_rect = Rect::from_center_size(
+                    pos2(rect.left() + 16.0, rect.center().y),
+                    vec2(14.0, 14.0),
+                );
+                logo_at(
+                    ui,
+                    id,
+                    icon_rect,
+                    if selected { brand(id) } else { pal.muted },
+                );
                 ui.painter().text(
                     pos2(rect.left() + 28.0, rect.center().y),
                     Align2::LEFT_CENTER,
@@ -455,7 +620,12 @@ impl PopupApp {
         let accent = level_color(&pal, cfg, w.used, brand(&p.id));
         card(ui, &pal, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(&w.label).size(13.5).family(semibold()).color(pal.text));
+                ui.label(
+                    RichText::new(&w.label)
+                        .size(13.5)
+                        .family(semibold())
+                        .color(pal.text),
+                );
                 let cadence = w.cadence();
                 if !cadence.is_empty() && !w.label.to_lowercase().contains(&cadence) {
                     ui.label(RichText::new(cadence).size(11.5).color(pal.faint));
@@ -472,8 +642,17 @@ impl PopupApp {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 let v = cfg.display_value(w.used);
-                ui.label(RichText::new(format!("{v:.0}%")).size(28.0).family(bold()).color(pal.text));
-                ui.label(RichText::new(cfg.display_suffix()).size(13.0).color(pal.muted));
+                ui.label(
+                    RichText::new(format!("{v:.0}%"))
+                        .size(28.0)
+                        .family(bold())
+                        .color(pal.text),
+                );
+                ui.label(
+                    RichText::new(cfg.display_suffix())
+                        .size(13.0)
+                        .color(pal.muted),
+                );
                 if let Some(pace) = &w.pace {
                     if let Some(d) = pace.delta {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -491,23 +670,47 @@ impl PopupApp {
             });
             ui.add_space(4.0);
             // Bar with the pace marker: where usage "should" be at this point in the window.
-            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 8.0), Sense::hover());
+            let (rect, resp) =
+                ui.allocate_exact_size(vec2(ui.available_width(), 8.0), Sense::hover());
             let painter = ui.painter();
             painter.rect_filled(rect, CornerRadius::same(4), pal.track);
             let frac = (cfg.display_value(w.used) / 100.0).clamp(0.0, 1.0) as f32;
             if frac > 0.0 {
-                let fill = Rect::from_min_size(rect.min, vec2((rect.width() * frac).max(8.0), rect.height()));
+                let fill = Rect::from_min_size(
+                    rect.min,
+                    vec2((rect.width() * frac).max(8.0), rect.height()),
+                );
                 painter.rect_filled(fill, CornerRadius::same(4), accent);
             }
             if let Some(expected) = w.pace.as_ref().and_then(|p| p.expected_used) {
                 let ef = (cfg.display_value(expected) / 100.0).clamp(0.0, 1.0) as f32;
                 let x = rect.left() + rect.width() * ef;
-                painter.line_segment([pos2(x, rect.top() - 3.0), pos2(x, rect.bottom() + 3.0)], Stroke::new(2.0, pal.text.gamma_multiply(0.75)));
-                resp.on_hover_text(format!("Pace marker: {:.0}% {} expected by now", cfg.display_value(expected), cfg.display_suffix()));
+                painter.line_segment(
+                    [pos2(x, rect.top() - 3.0), pos2(x, rect.bottom() + 3.0)],
+                    Stroke::new(2.0, pal.text.gamma_multiply(0.75)),
+                );
+                resp.on_hover_text(format!(
+                    "Pace marker: {:.0}% {} expected by now",
+                    cfg.display_value(expected),
+                    cfg.display_suffix()
+                ));
             }
             if let Some(pace) = &w.pace {
-                let parts: Vec<&str> = pace.summary.split('|').map(str::trim).filter(|s| !s.is_empty()).collect();
-                let detail: Vec<&str> = parts.iter().copied().filter(|s| !s.contains("in reserve") && !s.contains("Expected") && !s.eq_ignore_ascii_case("on pace")).collect();
+                let parts: Vec<&str> = pace
+                    .summary
+                    .split('|')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                let detail: Vec<&str> = parts
+                    .iter()
+                    .copied()
+                    .filter(|s| {
+                        !s.contains("in reserve")
+                            && !s.contains("Expected")
+                            && !s.eq_ignore_ascii_case("on pace")
+                    })
+                    .collect();
                 let mut line = detail.join(" · ");
                 if line.is_empty() {
                     if let Some(eta) = pace.eta_secs.filter(|_| pace.will_last == Some(false)) {
@@ -516,7 +719,11 @@ impl PopupApp {
                 }
                 if !line.is_empty() {
                     ui.add_space(2.0);
-                    let col = if pace.will_last == Some(false) { pace_color(&pal, w) } else { pal.muted };
+                    let col = if pace.will_last == Some(false) {
+                        pace_color(&pal, w)
+                    } else {
+                        pal.muted
+                    };
                     ui.label(RichText::new(line).size(12.0).color(col));
                 }
             }
@@ -530,16 +737,30 @@ impl PopupApp {
             return;
         }
         card(ui, &pal, |ui| {
-            ui.label(RichText::new("Model limits").size(12.0).family(semibold()).color(pal.muted));
+            ui.label(
+                RichText::new("Model limits")
+                    .size(12.0)
+                    .family(semibold())
+                    .color(pal.muted),
+            );
             for w in scoped {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(&w.label).size(12.5).color(pal.text));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(RichText::new(format!("{:.0}%", cfg.display_value(w.used))).size(12.5).family(semibold()));
+                        ui.label(
+                            RichText::new(format!("{:.0}%", cfg.display_value(w.used)))
+                                .size(12.5)
+                                .family(semibold()),
+                        );
                         let (rect, _) = ui.allocate_exact_size(vec2(90.0, 5.0), Sense::hover());
-                        ui.painter().rect_filled(rect, CornerRadius::same(3), pal.track);
+                        ui.painter()
+                            .rect_filled(rect, CornerRadius::same(3), pal.track);
                         let f = (cfg.display_value(w.used) / 100.0).clamp(0.0, 1.0) as f32;
-                        ui.painter().rect_filled(Rect::from_min_size(rect.min, vec2(rect.width() * f, 5.0)), CornerRadius::same(3), level_color(&pal, cfg, w.used, brand(&p.id)));
+                        ui.painter().rect_filled(
+                            Rect::from_min_size(rect.min, vec2(rect.width() * f, 5.0)),
+                            CornerRadius::same(3),
+                            level_color(&pal, cfg, w.used, brand(&p.id)),
+                        );
                     });
                 });
             }
@@ -551,14 +772,40 @@ impl PopupApp {
         card(ui, &pal, |ui| {
             ui.horizontal(|ui| {
                 ui.label(RichText::new("Spend").size(13.5).family(semibold()));
-                ui.label(RichText::new(if cost.estimated { "API list-price estimate · local logs" } else { "reported" }).size(11.5).color(pal.faint));
+                ui.label(
+                    RichText::new(if cost.estimated {
+                        "API list-price estimate · local logs"
+                    } else {
+                        "reported"
+                    })
+                    .size(11.5)
+                    .color(pal.faint),
+                );
             });
             ui.add_space(4.0);
             ui.columns(3, |cols| {
-                stat(&mut cols[0], &pal, "Today", &format::money(cost.today), &format!("{} tokens", format::tokens(cost.today_tokens)));
-                stat(&mut cols[1], &pal, "30 days", &format::money(cost.last30), &format!("{} tokens", format::tokens(cost.tokens30)));
+                stat(
+                    &mut cols[0],
+                    &pal,
+                    "Today",
+                    &format::money(cost.today),
+                    &format!("{} tokens", format::tokens(cost.today_tokens)),
+                );
+                stat(
+                    &mut cols[1],
+                    &pal,
+                    "30 days",
+                    &format::money(cost.last30),
+                    &format!("{} tokens", format::tokens(cost.tokens30)),
+                );
                 let avg = cost.last30 / 30.0;
-                stat(&mut cols[2], &pal, "Daily avg", &format::money(avg), "last 30 days");
+                stat(
+                    &mut cols[2],
+                    &pal,
+                    "Daily avg",
+                    &format::money(avg),
+                    "last 30 days",
+                );
             });
             ui.add_space(6.0);
             // Daily bars for the last 30 days (missing days are zero).
@@ -568,17 +815,31 @@ impl PopupApp {
                 .map(|i| {
                     let d = today - ChronoDuration::days(i);
                     let row = cost.daily.iter().find(|r| r.date == d);
-                    (d, row.map(|r| r.cost).unwrap_or(0.0), row.map(|r| r.tokens).unwrap_or(0))
+                    (
+                        d,
+                        row.map(|r| r.cost).unwrap_or(0.0),
+                        row.map(|r| r.tokens).unwrap_or(0),
+                    )
                 })
                 .collect();
             let max = days.iter().map(|d| d.1).fold(0.0, f64::max).max(0.01);
-            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 54.0), Sense::hover());
+            let (rect, resp) =
+                ui.allocate_exact_size(vec2(ui.available_width(), 54.0), Sense::hover());
             let step = rect.width() / days.len() as f32;
-            let hovered = resp.hover_pos().map(|p| (((p.x - rect.left()) / step) as usize).min(days.len() - 1));
+            let hovered = resp
+                .hover_pos()
+                .map(|p| (((p.x - rect.left()) / step) as usize).min(days.len() - 1));
             for (i, (_, v, _)) in days.iter().enumerate() {
-                let h = ((*v / max) as f32 * (rect.height() - 2.0)).max(if *v > 0.0 { 2.0 } else { 1.0 });
+                let h = ((*v / max) as f32 * (rect.height() - 2.0)).max(if *v > 0.0 {
+                    2.0
+                } else {
+                    1.0
+                });
                 let x = rect.left() + step * i as f32;
-                let bar = Rect::from_min_max(pos2(x + 1.0, rect.bottom() - h), pos2(x + step - 1.0, rect.bottom()));
+                let bar = Rect::from_min_max(
+                    pos2(x + 1.0, rect.bottom() - h),
+                    pos2(x + step - 1.0, rect.bottom()),
+                );
                 let col = if hovered == Some(i) {
                     accent
                 } else if *v > 0.0 {
@@ -591,11 +852,25 @@ impl PopupApp {
             let caption = match hovered {
                 Some(i) => {
                     let (d, v, t) = days[i];
-                    format!("{} · {} · {} tokens", d.format("%a %b %-d"), format::money(v), format::tokens(t))
+                    format!(
+                        "{} · {} · {} tokens",
+                        d.format("%a %b %-d"),
+                        format::money(v),
+                        format::tokens(t)
+                    )
                 }
                 None => {
-                    let top: Vec<String> = cost.models.iter().take(3).map(|(m, c)| format!("{} {}", format::model_name(m), format::money(*c))).collect();
-                    if top.is_empty() { "Hover a bar for details".into() } else { top.join(" · ") }
+                    let top: Vec<String> = cost
+                        .models
+                        .iter()
+                        .take(3)
+                        .map(|(m, c)| format!("{} {}", format::model_name(m), format::money(*c)))
+                        .collect();
+                    if top.is_empty() {
+                        "Hover a bar for details".into()
+                    } else {
+                        top.join(" · ")
+                    }
                 }
             };
             ui.label(RichText::new(caption).size(11.5).color(pal.muted));
@@ -614,7 +889,14 @@ impl PopupApp {
             card(ui, &pal, |ui| {
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new().size(14.0).color(pal.muted));
-                    ui.label(RichText::new(if snap.busy { "Fetching usage…" } else { "No data yet" }).color(pal.muted));
+                    ui.label(
+                        RichText::new(if snap.busy {
+                            "Fetching usage…"
+                        } else {
+                            "No data yet"
+                        })
+                        .color(pal.muted),
+                    );
                 });
             });
             return;
@@ -648,7 +930,9 @@ impl PopupApp {
                     ui.label(RichText::new("Extra usage").size(13.0).family(semibold()));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let txt = match (extra.used, extra.limit) {
-                            (Some(u), Some(l)) => format!("{} / {}", format::money(u), format::money(l)),
+                            (Some(u), Some(l)) => {
+                                format!("{} / {}", format::money(u), format::money(l))
+                            }
                             (Some(u), None) => format::money(u),
                             (None, Some(l)) => format!("limit {}", format::money(l)),
                             _ => String::new(),
@@ -662,7 +946,9 @@ impl PopupApp {
             card(ui, &pal, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Credits").size(13.0).family(semibold()));
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| ui.label(format!("{credits:.2}")));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.label(format!("{credits:.2}"))
+                    });
                 });
             });
         }
@@ -695,11 +981,31 @@ fn summary_text(snap: &Snapshot, cfg: &Config) -> String {
             .windows
             .iter()
             .filter(|w| !w.scoped)
-            .map(|w| format!("{} {:.0}% {} ({})", w.label, cfg.display_value(w.used), cfg.display_suffix(), format::resets_in(w.resets_at)))
+            .map(|w| {
+                format!(
+                    "{} {:.0}% {} ({})",
+                    w.label,
+                    cfg.display_value(w.used),
+                    cfg.display_suffix(),
+                    format::resets_in(w.resets_at)
+                )
+            })
             .collect();
-        out.push(format!("{}: {}", p.name(), if windows.is_empty() { "unavailable".into() } else { windows.join(", ") }));
+        out.push(format!(
+            "{}: {}",
+            p.name(),
+            if windows.is_empty() {
+                "unavailable".into()
+            } else {
+                windows.join(", ")
+            }
+        ));
         if let Some(c) = snap.cost(&p.id) {
-            out.push(format!("  spend today {} · 30d {}", format::money(c.today), format::money(c.last30)));
+            out.push(format!(
+                "  spend today {} · 30d {}",
+                format::money(c.today),
+                format::money(c.last30)
+            ));
         }
     }
     out.join("\n")
@@ -707,7 +1013,12 @@ fn summary_text(snap: &Snapshot, cfg: &Config) -> String {
 
 fn stat(ui: &mut Ui, pal: &Palette, label: &str, value: &str, sub: &str) {
     ui.label(RichText::new(label).size(11.5).color(pal.muted));
-    ui.label(RichText::new(value).size(17.0).family(semibold()).color(pal.text));
+    ui.label(
+        RichText::new(value)
+            .size(17.0)
+            .family(semibold())
+            .color(pal.text),
+    );
     ui.label(RichText::new(sub).size(11.0).color(pal.faint));
 }
 
@@ -722,12 +1033,19 @@ fn pill(ui: &mut Ui, text: &str, color: Color32) {
 }
 
 fn link(ui: &mut Ui, pal: &Palette, text: &str) -> egui::Response {
-    let galley = ui.painter().layout_no_wrap(text.to_string(), FontId::new(12.0, medium()), pal.muted);
+    let galley =
+        ui.painter()
+            .layout_no_wrap(text.to_string(), FontId::new(12.0, medium()), pal.muted);
     let (rect, resp) = ui.allocate_exact_size(galley.size() + vec2(14.0, 10.0), Sense::click());
     if resp.hovered() {
-        ui.painter().rect_filled(rect, CornerRadius::same(6), pal.hover);
+        ui.painter()
+            .rect_filled(rect, CornerRadius::same(6), pal.hover);
     }
-    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, if resp.hovered() { pal.text } else { pal.muted });
+    ui.painter().galley(
+        rect.center() - galley.size() / 2.0,
+        galley,
+        if resp.hovered() { pal.text } else { pal.muted },
+    );
     resp
 }
 
@@ -739,12 +1057,26 @@ fn provider_logo(ui: &mut Ui, id: &str, size: f32, tint: Color32) {
 fn logo_at(ui: &mut Ui, id: &str, rect: Rect, tint: Color32) {
     match crate::icons::provider_svg(id) {
         Some(bytes) => {
-            egui::Image::from_bytes(format!("bytes://provider-{id}.svg"), bytes).tint(tint).paint_at(ui, rect);
+            egui::Image::from_bytes(format!("bytes://provider-{id}.svg"), bytes)
+                .tint(tint)
+                .paint_at(ui, rect);
         }
         None => {
-            ui.painter().circle_filled(rect.center(), rect.width() / 2.0, tint.gamma_multiply(0.2));
-            let initial = id.chars().next().unwrap_or('?').to_ascii_uppercase().to_string();
-            ui.painter().text(rect.center(), Align2::CENTER_CENTER, initial, FontId::new(rect.height() * 0.6, bold()), tint);
+            ui.painter()
+                .circle_filled(rect.center(), rect.width() / 2.0, tint.gamma_multiply(0.2));
+            let initial = id
+                .chars()
+                .next()
+                .unwrap_or('?')
+                .to_ascii_uppercase()
+                .to_string();
+            ui.painter().text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                initial,
+                FontId::new(rect.height() * 0.6, bold()),
+                tint,
+            );
         }
     }
 }
@@ -772,27 +1104,38 @@ impl PopupApp {
                     ids.push(p.clone());
                 }
             }
-            egui::Grid::new("providers").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-                for (i, id) in ids.iter().enumerate() {
-                    let mut on = draft.providers.contains(id);
-                    ui.horizontal(|ui| {
-                        if ui.checkbox(&mut on, "").changed() {
-                            if on {
-                                draft.providers.push(id.clone());
-                            } else if draft.providers.len() > 1 {
-                                draft.providers.retain(|p| p != id);
+            egui::Grid::new("providers")
+                .num_columns(2)
+                .spacing(vec2(12.0, 6.0))
+                .show(ui, |ui| {
+                    for (i, id) in ids.iter().enumerate() {
+                        let mut on = draft.providers.contains(id);
+                        ui.horizontal(|ui| {
+                            if ui.checkbox(&mut on, "").changed() {
+                                if on {
+                                    draft.providers.push(id.clone());
+                                } else if draft.providers.len() > 1 {
+                                    draft.providers.retain(|p| p != id);
+                                }
                             }
+                            provider_logo(ui, id, 14.0, if on { brand(id) } else { pal.faint });
+                            ui.label(RichText::new(provider_name(id)).size(13.0).color(if on {
+                                pal.text
+                            } else {
+                                pal.muted
+                            }));
+                        });
+                        if i % 2 == 1 {
+                            ui.end_row();
                         }
-                        provider_logo(ui, id, 14.0, if on { brand(id) } else { pal.faint });
-                        ui.label(RichText::new(provider_name(id)).size(13.0).color(if on { pal.text } else { pal.muted }));
-                    });
-                    if i % 2 == 1 {
-                        ui.end_row();
                     }
-                }
-            });
+                });
             ui.horizontal(|ui| {
-                let r = ui.add(egui::TextEdit::singleline(&mut self.new_provider).hint_text("other provider id, e.g. zed").desired_width(200.0));
+                let r = ui.add(
+                    egui::TextEdit::singleline(&mut self.new_provider)
+                        .hint_text("other provider id, e.g. zed")
+                        .desired_width(200.0),
+                );
                 text_focus |= r.has_focus();
                 let submit = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 if (ui.button("Add").clicked() || submit) && !self.new_provider.trim().is_empty() {
@@ -803,25 +1146,78 @@ impl PopupApp {
                     self.new_provider.clear();
                 }
             });
-            ui.label(RichText::new("Order = tray order. The first provider opens by default.").size(11.0).color(pal.faint));
+            ui.label(
+                RichText::new("Order = tray order. The first provider opens by default.")
+                    .size(11.0)
+                    .color(pal.faint),
+            );
         });
 
         section(ui, &pal, "Display");
         card(ui, &pal, |ui| {
-            ui.label(RichText::new("Percentages show").size(12.5).color(pal.muted));
-            segmented(ui, &pal, &mut draft.quota_display, &[(QuotaDisplay::Used, "Used"), (QuotaDisplay::Remaining, "Remaining")]);
+            ui.label(
+                RichText::new("Percentages show")
+                    .size(12.5)
+                    .color(pal.muted),
+            );
+            segmented(
+                ui,
+                &pal,
+                &mut draft.quota_display,
+                &[
+                    (QuotaDisplay::Used, "Used"),
+                    (QuotaDisplay::Remaining, "Remaining"),
+                ],
+            );
             ui.add_space(6.0);
             ui.label(RichText::new("Tray icon").size(12.5).color(pal.muted));
-            segmented(ui, &pal, &mut draft.tray_style, &[(TrayStyle::Bars, "Bars"), (TrayStyle::Ring, "Rings"), (TrayStyle::Percent, "Number"), (TrayStyle::Logo, "Logo")]);
+            segmented(
+                ui,
+                &pal,
+                &mut draft.tray_style,
+                &[
+                    (TrayStyle::Bars, "Bars"),
+                    (TrayStyle::Ring, "Rings"),
+                    (TrayStyle::Percent, "Number"),
+                    (TrayStyle::Logo, "Logo"),
+                ],
+            );
             if matches!(draft.tray_style, TrayStyle::Percent | TrayStyle::Logo) {
                 ui.add_space(4.0);
-                segmented(ui, &pal, &mut draft.tray_window, &[(TrayWindow::Session, "Session"), (TrayWindow::Weekly, "Weekly"), (TrayWindow::Tightest, "Tightest")]);
+                segmented(
+                    ui,
+                    &pal,
+                    &mut draft.tray_window,
+                    &[
+                        (TrayWindow::Session, "Session"),
+                        (TrayWindow::Weekly, "Weekly"),
+                        (TrayWindow::Tightest, "Tightest"),
+                    ],
+                );
             }
             ui.label(RichText::new("Tip: scroll on the tray icon to flip between session and weekly; middle-click refreshes.").size(11.0).color(pal.faint));
             ui.add_space(6.0);
-            toggle(ui, &pal, &mut draft.show_costs, "Show local spend", Some("Estimated from ~/.claude and ~/.codex logs"));
-            toggle(ui, &pal, &mut draft.show_status, "Show service status", None);
-            toggle(ui, &pal, &mut draft.close_on_blur, "Close popup when it loses focus", None);
+            toggle(
+                ui,
+                &pal,
+                &mut draft.show_costs,
+                "Show local spend",
+                Some("Estimated from ~/.claude and ~/.codex logs"),
+            );
+            toggle(
+                ui,
+                &pal,
+                &mut draft.show_status,
+                "Show service status",
+                None,
+            );
+            toggle(
+                ui,
+                &pal,
+                &mut draft.close_on_blur,
+                "Close popup when it loses focus",
+                None,
+            );
         });
 
         section(ui, &pal, "Refresh & alerts");
@@ -829,26 +1225,50 @@ impl PopupApp {
             ui.horizontal(|ui| {
                 ui.label("Refresh every");
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.label(RichText::new(format::duration(draft.refresh_secs as i64)).family(semibold()));
+                    ui.label(
+                        RichText::new(format::duration(draft.refresh_secs as i64))
+                            .family(semibold()),
+                    );
                 });
             });
             ui.spacing_mut().slider_width = ui.available_width() - 8.0;
             let mut mins = (draft.refresh_secs / 60) as u32;
-            if ui.add(egui::Slider::new(&mut mins, 1..=30).show_value(false)).changed() {
+            if ui
+                .add(egui::Slider::new(&mut mins, 1..=30).show_value(false))
+                .changed()
+            {
                 draft.refresh_secs = mins as u64 * 60;
             }
             ui.add_space(4.0);
-            toggle(ui, &pal, &mut draft.notifications, "Desktop notifications", None);
+            toggle(
+                ui,
+                &pal,
+                &mut draft.notifications,
+                "Desktop notifications",
+                None,
+            );
             if draft.notifications {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Alert at % used").color(pal.muted));
-                    let r = ui.add(egui::TextEdit::singleline(&mut self.thresholds_text).desired_width(90.0));
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut self.thresholds_text).desired_width(90.0),
+                    );
                     text_focus |= r.has_focus();
                     if r.lost_focus() {
-                        draft.notify_thresholds = self.thresholds_text.split(|c: char| !c.is_ascii_digit()).filter_map(|s| s.parse().ok()).collect();
+                        draft.notify_thresholds = self
+                            .thresholds_text
+                            .split(|c: char| !c.is_ascii_digit())
+                            .filter_map(|s| s.parse().ok())
+                            .collect();
                     }
                 });
-                toggle(ui, &pal, &mut draft.notify_reset, "Notify when the session resets", None);
+                toggle(
+                    ui,
+                    &pal,
+                    &mut draft.notify_reset,
+                    "Notify when the session resets",
+                    None,
+                );
             }
         });
 
@@ -860,9 +1280,18 @@ impl PopupApp {
             ui.add_space(4.0);
             ui.label(RichText::new("Source").size(12.5).color(pal.muted));
             let mut src = draft.source.clone();
-            let opts = [("auto", "Auto (OAuth first)"), ("oauth", "OAuth"), ("cli", "Claude CLI")];
+            let opts = [
+                ("auto", "Auto (OAuth first)"),
+                ("oauth", "OAuth"),
+                ("cli", "Claude CLI"),
+            ];
             let mut sel = opts.iter().position(|o| o.0 == src).unwrap_or(0);
-            if segmented(ui, &pal, &mut sel, &[(0, opts[0].1), (1, opts[1].1), (2, opts[2].1)]) {
+            if segmented(
+                ui,
+                &pal,
+                &mut sel,
+                &[(0, opts[0].1), (1, opts[1].1), (2, opts[2].1)],
+            ) {
                 src = opts[sel].0.to_string();
                 draft.source = src;
             }
@@ -870,10 +1299,14 @@ impl PopupApp {
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             if link(ui, &pal, "Open config file").clicked() {
-                crate::daemon::open_url(&format!("file://{}", crate::config::config_path().display()));
+                crate::daemon::open_url(&format!(
+                    "file://{}",
+                    crate::config::config_path().display()
+                ));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let quit = egui::Button::new(RichText::new("Quit CodexBar").color(pal.bad)).fill(pal.bad.gamma_multiply(0.1));
+                let quit = egui::Button::new(RichText::new("Quit CodexBar").color(pal.bad))
+                    .fill(pal.bad.gamma_multiply(0.1));
                 if ui.add(quit).clicked() {
                     ipc::send(&Request::Quit);
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -884,7 +1317,9 @@ impl PopupApp {
         let mut clean = draft.clone();
         clean.sanitize();
         if !text_focus && clean != *cfg {
-            ipc::send(&Request::SetConfig { config: clean.clone() });
+            ipc::send(&Request::SetConfig {
+                config: clean.clone(),
+            });
             // Optimistic local update so the UI does not flicker before the daemon echoes back.
             if let Some(s) = self.state.lock().unwrap().as_mut() {
                 s.config = clean;
@@ -896,18 +1331,29 @@ impl PopupApp {
 
 fn section(ui: &mut Ui, pal: &Palette, title: &str) {
     ui.add_space(6.0);
-    ui.label(RichText::new(title.to_uppercase()).size(11.0).family(semibold()).color(pal.faint));
+    ui.label(
+        RichText::new(title.to_uppercase())
+            .size(11.0)
+            .family(semibold())
+            .color(pal.faint),
+    );
 }
 
 impl eframe::App for PopupApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        let Some(State { snapshot, config }) = self.state.lock().unwrap().clone() else { return };
+        let Some(State { snapshot, config }) = self.state.lock().unwrap().clone() else {
+            return;
+        };
 
         let focused = ctx.input(|i| i.focused);
         if focused {
             self.had_focus = true;
-        } else if self.had_focus && config.close_on_blur && self.snapshot_to.is_none() && self.opened.elapsed() > Duration::from_millis(300) {
+        } else if self.had_focus
+            && config.close_on_blur
+            && self.snapshot_to.is_none()
+            && self.opened.elapsed() > Duration::from_millis(300)
+        {
             self.close(&ctx, true);
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -930,66 +1376,114 @@ impl eframe::App for PopupApp {
         let pal = self.pal;
         let full = ui.max_rect();
         ui.painter().rect_filled(full, CornerRadius::ZERO, pal.bg);
-        ui.painter().rect_stroke(full, CornerRadius::ZERO, Stroke::new(1.0, pal.border), StrokeKind::Inside);
+        ui.painter().rect_stroke(
+            full,
+            CornerRadius::ZERO,
+            Stroke::new(1.0, pal.border),
+            StrokeKind::Inside,
+        );
 
-        let content = Frame::new().inner_margin(Margin::symmetric(16, 14)).show(ui, |ui| {
-            ui.set_width(WIDTH - 32.0);
-            // The scroll area is clipped to the current window, so size the window from its full
-            // content height rather than from what happened to fit.
-            egui::ScrollArea::vertical().max_height(MAX_HEIGHT - 28.0).auto_shrink([false, true]).show(ui, |ui| {
-                if !self.connected.load(Ordering::Relaxed) {
-                    Frame::new().fill(pal.warn.gamma_multiply(0.14)).corner_radius(CornerRadius::same(8)).inner_margin(Margin::symmetric(10, 6)).show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("Background service not running").size(12.0));
-                            if ui.small_button("Start").clicked() {
-                                if let Ok(exe) = std::env::current_exe() {
-                                    let _ = std::process::Command::new(exe).arg("--background").spawn();
-                                }
-                            }
-                        });
-                    });
-                    ui.add_space(6.0);
-                }
-                if let Some(notice) = &snapshot.notice {
-                    Frame::new().fill(pal.warn.gamma_multiply(0.14)).corner_radius(CornerRadius::same(8)).inner_margin(Margin::symmetric(10, 6)).show(ui, |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.label(RichText::new(notice).size(12.0));
-                    });
-                    ui.add_space(6.0);
-                }
-                match self.view {
-                    View::Usage => self.usage_view(ui, &snapshot, &config),
-                    View::Settings => self.settings_view(ui, &config),
-                }
-            })
-            .content_size
-            .y
-        });
+        let content = Frame::new()
+            .inner_margin(Margin::symmetric(16, 14))
+            .show(ui, |ui| {
+                ui.set_width(WIDTH - 32.0);
+                // The scroll area is clipped to the current window, so size the window from its full
+                // content height rather than from what happened to fit.
+                egui::ScrollArea::vertical()
+                    .max_height(MAX_HEIGHT - 28.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        if !self.connected.load(Ordering::Relaxed) {
+                            Frame::new()
+                                .fill(pal.warn.gamma_multiply(0.14))
+                                .corner_radius(CornerRadius::same(8))
+                                .inner_margin(Margin::symmetric(10, 6))
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            RichText::new("Background service not running")
+                                                .size(12.0),
+                                        );
+                                        if ui.small_button("Start").clicked() {
+                                            if let Ok(exe) = std::env::current_exe() {
+                                                let _ = std::process::Command::new(exe)
+                                                    .arg("--background")
+                                                    .spawn();
+                                            }
+                                        }
+                                    });
+                                });
+                            ui.add_space(6.0);
+                        }
+                        if let Some(notice) = &snapshot.notice {
+                            Frame::new()
+                                .fill(pal.warn.gamma_multiply(0.14))
+                                .corner_radius(CornerRadius::same(8))
+                                .inner_margin(Margin::symmetric(10, 6))
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.label(RichText::new(notice).size(12.0));
+                                });
+                            ui.add_space(6.0);
+                        }
+                        match self.view {
+                            View::Usage => self.usage_view(ui, &snapshot, &config),
+                            View::Settings => self.settings_view(ui, &config),
+                        }
+                    })
+                    .content_size
+                    .y
+            });
         let height = (content.inner + 28.0).clamp(120.0, MAX_HEIGHT).ceil();
         let mismatch = (full.height() - height).abs() > 2.0 && self.frames % 10 == 5;
         if (height - self.last_height).abs() > 1.0 || mismatch {
             self.last_height = height;
+            self.resized_at = Instant::now();
             // Wayland ignores InnerSize for fixed-size windows, so pin min = max = target instead.
             let size = vec2(WIDTH, height);
             ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(size));
             ctx.send_viewport_cmd(egui::ViewportCommand::MaxInnerSize(size));
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            // X11 keeps the top-left corner on resize; re-pin so a bottom-panel popup stays put.
+            if let Some(pos) = ANCHOR.get().and_then(|&at| x11_position(at, height)) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
+            }
         }
         // Debug aid: render one settled frame to a PNG and exit (CODEXBAR_SNAPSHOT_TO=/tmp/x.png).
         self.frames += 1;
         let inner_h = full.height();
-        if self.frames >= 12 && (inner_h - self.last_height).abs() < 2.0 && self.snapshot_to.is_some() {
+        if self.frames >= 12
+            && (inner_h - self.last_height).abs() < 2.0
+            && self.snapshot_to.is_some()
+        {
             if let Some(path) = self.snapshot_to.take() {
                 ctx.request_screenshot(move |img| {
                     let [w, h] = img.size;
-                    let _ = image::save_buffer(&path, img.as_raw(), w as u32, h as u32, image::ExtendedColorType::Rgba8);
+                    let _ = image::save_buffer(
+                        &path,
+                        img.as_raw(),
+                        w as u32,
+                        h as u32,
+                        image::ExtendedColorType::Rgba8,
+                    );
                     std::process::exit(0);
                 });
             }
             ctx.request_repaint();
         }
+        // egui only repaints on input, so the resize above would not be laid out until the cursor
+        // moves over the window. Keep repainting until the window reaches its target height
+        // (bounded, in case the compositor never grants it).
+        if (inner_h - self.last_height).abs() > 2.0
+            && self.resized_at.elapsed() < Duration::from_secs(2)
+        {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        }
         if std::env::var_os("CODEXBAR_DEBUG").is_some() {
-            eprintln!("frame {} focused={focused} inner={inner_h} want={}", self.frames, self.last_height);
+            eprintln!(
+                "frame {} focused={focused} inner={inner_h} want={}",
+                self.frames, self.last_height
+            );
         }
         if self.snapshot_to.is_some() {
             ctx.request_repaint_after(Duration::from_millis(50));
@@ -1003,6 +1497,24 @@ impl eframe::App for PopupApp {
     }
 }
 
+/// Tray click position the popup was opened from, fixed for the popup's lifetime.
+static ANCHOR: std::sync::OnceLock<(i32, i32)> = std::sync::OnceLock::new();
+
+/// Client-side placement next to the tray click. Only X11 honours it; on KDE Wayland the
+/// daemon places the popup via a KWin script (kwin.rs).
+fn x11_position((x, y): (i32, i32), height: f32) -> Option<egui::Pos2> {
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        return None;
+    }
+    let px = (x as f32 - WIDTH / 2.0).max(8.0);
+    let py = if y > 400 {
+        (y as f32 - 12.0 - height - 28.0).max(8.0)
+    } else {
+        y as f32 + 12.0
+    };
+    Some(pos2(px, py))
+}
+
 pub fn run(at: Option<(i32, i32)>) -> i32 {
     let desktop = theme::detect();
     let mut viewport = egui::ViewportBuilder::default()
@@ -1014,16 +1526,30 @@ pub fn run(at: Option<(i32, i32)>) -> i32 {
         .with_taskbar(false)
         .with_window_level(egui::WindowLevel::AlwaysOnTop);
     if let Some(rgba) = crate::icon::render_rgba_logo("claude", brand_color("claude"), 64) {
-        viewport = viewport.with_icon(egui::IconData { rgba, width: 64, height: 64 });
+        viewport = viewport.with_icon(egui::IconData {
+            rgba,
+            width: 64,
+            height: 64,
+        });
     }
-    // Only X11 honours client positioning; on Wayland KWin places it (see the installed window rule).
-    if let Some((x, y)) = at.filter(|_| std::env::var_os("WAYLAND_DISPLAY").is_none()) {
-        let px = (x as f32 - WIDTH / 2.0).max(8.0);
-        let py = if y > 400 { (y as f32 - 560.0).max(8.0) } else { y as f32 + 12.0 };
-        viewport = viewport.with_position(pos2(px, py));
+    // Only X11 honours client positioning; on KDE Wayland the daemon places it via a KWin script (kwin.rs).
+    if let Some(at) = at {
+        let _ = ANCHOR.set(at);
+        if let Some(pos) = x11_position(at, 420.0) {
+            viewport = viewport.with_position(pos);
+        }
     }
-    let options = eframe::NativeOptions { viewport, centered: at.is_none(), persist_window: false, ..Default::default() };
-    let result = eframe::run_native("codexbar-tray-popup", options, Box::new(move |cc| Ok(Box::new(PopupApp::new(cc, &desktop)))));
+    let options = eframe::NativeOptions {
+        viewport,
+        centered: at.is_none(),
+        persist_window: false,
+        ..Default::default()
+    };
+    let result = eframe::run_native(
+        "codexbar-tray-popup",
+        options,
+        Box::new(move |cc| Ok(Box::new(PopupApp::new(cc, &desktop)))),
+    );
     if let Err(e) = result {
         eprintln!("codexbar-tray popup: {e}");
         return 1;

@@ -15,11 +15,15 @@ pub enum Request {
     Get,
     Refresh,
     /// Refresh only when the data is older than `max_age` seconds.
-    RefreshIfStale { max_age: i64 },
+    RefreshIfStale {
+        max_age: i64,
+    },
     Show,
     Toggle,
     Quit,
-    SetConfig { config: Config },
+    SetConfig {
+        config: Config,
+    },
     /// Sent by the popup right before it closes because it lost focus.
     PopupClosing,
 }
