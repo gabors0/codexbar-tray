@@ -1,0 +1,32 @@
+[package]
+name = "codexbar-tray"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+description = "Linux tray + popup for CodexBar (Claude-first)"
+license = "MIT"
+
+[[bin]]
+name = "codexbar-tray"
+path = "src/main.rs"
+
+[dependencies]
+eframe = { version = "0.37", default-features = false, features = ["glow", "wayland", "x11", "default_fonts"] }
+egui_extras = { version = "0.37", features = ["svg"] }
+ksni = { path = "vendor/ksni", features = ["blocking"] }
+ab_glyph = "0.2"
+resvg = "0.48"
+zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
+libc = "0.2"
+image = { version = "0.25", default-features = false, features = ["png"] }
+notify-rust = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+chrono = { version = "0.4", features = ["serde"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true
