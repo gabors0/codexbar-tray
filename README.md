@@ -81,7 +81,8 @@ cargo build --release && ./install.sh
 
 Building needs a C linker (`gcc`). `./cargo.sh build --release` builds in a small Podman container
 when you don't have one. Pushing a `v*` tag makes GitHub Actions publish the release
-binaries (`.github/workflows/release.yml`).
+binaries (`.github/workflows/release.yml`). Without a terminal, run the Release workflow from the
+Actions tab with the version (e.g. `v0.3.0`); it creates the tag together with the release.
 
 ## Credits
 
