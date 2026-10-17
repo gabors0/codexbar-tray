@@ -1,0 +1,25 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "redirects": [
+    { "source": "/install", "destination": "https://raw.githubusercontent.com/gabors0/limitray/main/install.sh", "permanent": false },
+    { "source": "/install.sh", "destination": "https://raw.githubusercontent.com/gabors0/limitray/main/install.sh", "permanent": false },
+    { "source": "/download", "destination": "https://github.com/gabors0/limitray/releases/latest", "permanent": false },
+    { "source": "/github", "destination": "https://github.com/gabors0/limitray", "permanent": false }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    },
+    {
+      "source": "/icons/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400" }]
+    }
+  ]
+}

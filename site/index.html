@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Limitray — AI usage limits in your Linux tray</title>
+  <meta name="description" content="Limitray shows your Claude, Codex, Gemini and other AI usage limits, pace and local spend right in the Linux system tray. One Rust binary for KDE, GNOME, Sway, Hyprland and X11.">
+  <meta name="theme-color" content="#16171a">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Limitray — AI usage limits in your Linux tray">
+  <meta property="og:description" content="Claude, Codex, Gemini and more: session and weekly limits, pace and local spend, one glance at your panel away.">
+  <meta property="og:image" content="/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="glow" aria-hidden="true"></div>
+
+  <header class="nav">
+    <a class="brand" href="/" aria-label="Limitray home">
+      <img src="/favicon.svg" alt="" width="28" height="28">
+      <span>Limitray</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#styles">Tray styles</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+      <a class="gh" href="https://github.com/gabors0/limitray" rel="noopener">
+        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span>
+      </a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ───────── Hero ───────── -->
+    <section class="hero">
+      <div class="hero-copy">
+        <a class="release-chip" id="release-chip" href="https://github.com/gabors0/limitray/releases/latest" rel="noopener">
+          <span class="dot"></span><span id="release-text">v0.3.0 is out</span><span aria-hidden="true">→</span>
+        </a>
+        <h1>Know your limits<br><span class="grad">before you hit them.</span></h1>
+        <p class="lede">
+          Limitray puts your Claude, Codex, Gemini and other AI usage limits in the Linux tray:
+          session and weekly quotas, how fast you're burning them, and what your local usage would cost.
+          One glance at your panel, no browser tab.
+        </p>
+
+        <div class="install-box" id="install">
+          <div class="install-head">
+            <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span>Install · one line, no root</span>
+          </div>
+          <div class="cmd">
+            <code><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/gabors0/limitray/main/install.sh | sh</code>
+            <button class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/gabors0/limitray/main/install.sh | sh" aria-label="Copy install command">Copy</button>
+          </div>
+        </div>
+
+        <div class="hero-ctas">
+          <a class="btn primary" href="https://github.com/gabors0/limitray/releases/latest/download/limitray-x86_64">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+            Download x86_64
+          </a>
+          <a class="btn" href="https://github.com/gabors0/limitray/releases/latest/download/limitray-aarch64">aarch64</a>
+          <a class="btn ghost" href="https://github.com/gabors0/limitray" rel="noopener">View source</a>
+        </div>
+        <p class="works-on">Works on KDE Plasma · GNOME (AppIndicator) · Sway / Hyprland (waybar) · X11</p>
+      </div>
+
+      <!-- Desktop mock: panel + popup, recreated from the app's own layout -->
+      <div class="desk" aria-label="Interactive preview of the Limitray tray popup">
+        <div class="panel">
+          <div class="panel-left">
+            <span class="launcher" aria-hidden="true"></span>
+            <span class="task active">Terminal</span>
+            <span class="task">Editor</span>
+          </div>
+          <div class="panel-right">
+            <span class="tray-ico other" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 3a9 9 0 0 1 9 9h-2a7 7 0 0 0-14 0H3a9 9 0 0 1 9-9zm0 4a5 5 0 0 1 5 5h-2a3 3 0 0 0-6 0H7a5 5 0 0 1 5-5zm0 4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/></svg>
+            </span>
+            <span class="tray-ico other" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 9h4l5-4v14l-5-4H4zM16 8.5a5 5 0 0 1 0 7l-1.4-1.4a3 3 0 0 0 0-4.2z"/></svg>
+            </span>
+            <button class="tray-ico me" id="tray-me" title="Left click: popup · Middle click: refresh · Scroll: session ↔ weekly" aria-label="Limitray tray icon">
+              <svg id="tray-svg" viewBox="0 0 100 100"></svg>
+            </button>
+            <span class="clock" id="clock">14:16</span>
+          </div>
+        </div>
+
+        <div class="popup" id="popup">
+          <div class="pp-head">
+            <span class="logo lg" id="pp-logo"></span>
+            <span class="pp-name" id="pp-name">Claude</span>
+            <span class="pill" id="pp-plan">Max</span>
+            <span class="spacer"></span>
+            <button class="ibtn" id="pp-refresh" aria-label="Refresh">
+              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4"/></svg>
+            </button>
+            <button class="ibtn" aria-label="Settings" tabindex="-1">
+              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            </button>
+          </div>
+          <div class="pp-status"><i class="sdot"></i><span id="pp-status">All Systems Operational · updated just now</span></div>
+          <div class="tabs" id="pp-tabs" role="tablist"></div>
+          <div id="pp-cards"></div>
+          <div class="pp-foot">
+            <span class="link">claude.ai usage ↗</span>
+            <span class="link">Copy summary</span>
+            <span class="spacer"></span>
+            <span class="faint">Esc to close</span>
+          </div>
+        </div>
+        <p class="desk-hint">Try it: click the tabs, hover the spend bars, scroll or middle-click the tray icon.</p>
+      </div>
+    </section>
+
+    <!-- ───────── Features ───────── -->
+    <section class="section" id="features">
+      <div class="section-head">
+        <p class="eyebrow">What it shows</p>
+        <h2>Everything you check the usage page for, already on screen.</h2>
+      </div>
+      <div class="grid">
+        <article class="feature">
+          <div class="f-ico"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+          <h3>Session &amp; weekly limits</h3>
+          <p>Both windows at once, with when each one resets. The tray icon draws them as two bars or rings, so you can read them without clicking.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico"><svg viewBox="0 0 24 24"><path d="M4 18h16M12 6v12M8 10l4-4 4 4"/></svg></div>
+          <h3>Pace marker</h3>
+          <p>A tick on each bar marks where usage should be at this point in the window. "13% in reserve" or "7% ahead of pace" tells you to keep going or slow down.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico"><svg viewBox="0 0 24 24"><path d="M5 20V10M10 20V4M15 20v-7M20 20v-11"/></svg></div>
+          <h3>Local spend</h3>
+          <p>Today, the last 30 days and a daily average, priced at API list rates from your <code>~/.claude</code> and <code>~/.codex</code> logs. Hover any day to see it.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4zM10 21h4"/></svg></div>
+          <h3>Alerts that matter</h3>
+          <p>Desktop notifications at 80% and 95% used by default (pick your own thresholds), and optionally when your session resets.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></div>
+          <h3>Many providers</h3>
+          <p>Claude, Codex, Gemini, Copilot, Cursor, OpenRouter and the other providers the CodexBar CLI supports. Scroll the icon to cycle through them.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <h3>Stays in your home dir</h3>
+          <p>No root, no system packages. Downloads are checked against their SHA-256, and updates are only offered, never installed without your OK.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- ───────── Tray styles ───────── -->
+    <section class="section" id="styles">
+      <div class="section-head">
+        <p class="eyebrow">Tray icon</p>
+        <h2>Four ways to show it in your panel.</h2>
+        <p class="sub">Drag the sliders. The colour turns amber at 80% and red at 95%, the same alert thresholds the app uses by default.</p>
+      </div>
+
+      <div class="styles-wrap">
+        <div class="style-grid" id="style-grid"></div>
+        <div class="controls">
+          <label class="slider">
+            <span>Session <b id="v-session">42%</b></span>
+            <input type="range" min="0" max="100" value="42" id="s-session">
+          </label>
+          <label class="slider">
+            <span>Weekly <b id="v-weekly">71%</b></span>
+            <input type="range" min="0" max="100" value="71" id="s-weekly">
+          </label>
+          <div class="seg" role="radiogroup" aria-label="Provider">
+            <button data-prov="claude" class="on">Claude</button>
+            <button data-prov="codex">Codex</button>
+            <button data-prov="gemini">Gemini</button>
+          </div>
+          <div class="seg" role="radiogroup" aria-label="Panel colour">
+            <button data-panel="dark" class="on">Dark panel</button>
+            <button data-panel="light">Light panel</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── Controls ───────── -->
+    <section class="section split">
+      <div>
+        <p class="eyebrow">At your fingertips</p>
+        <h2>Built for the mouse and the keyboard.</h2>
+        <table class="keys">
+          <tbody>
+            <tr><td><kbd>Left click</kbd></td><td>Open or close the popup</td></tr>
+            <tr><td><kbd>Middle click</kbd></td><td>Refresh now</td></tr>
+            <tr><td><kbd>Scroll</kbd></td><td>Switch session ↔ weekly (and provider)</td></tr>
+            <tr><td><kbd>Right click</kbd></td><td>Live numbers, icon style, providers, notifications</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>R</kbd></td><td>Refresh from the popup</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>,</kbd></td><td>Settings</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Close</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <p class="eyebrow">And a CLI</p>
+        <h2>Script it, bind it to a hotkey.</h2>
+        <div class="term">
+          <div class="term-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>~</span></div>
+<pre><span class="c"># JSON snapshot for your status bar or scripts</span>
+<span class="p">$</span> limitray --status
+<span class="c"># bind this one to a global shortcut</span>
+<span class="p">$</span> limitray --toggle
+<span class="p">$</span> limitray --refresh
+<span class="c"># update the app and the CodexBar CLI</span>
+<span class="p">$</span> limitray update --check
+<span class="p">$</span> limitray update
+<span class="p">$</span> limitray uninstall --purge</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── How install works ───────── -->
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">Installing</p>
+        <h2>One command. Everything stays in <code>~/.local</code>.</h2>
+      </div>
+      <ol class="steps">
+        <li>
+          <span class="n">1</span>
+          <div><h3>Downloads the app</h3><p>The script fetches the latest <code>limitray</code> build for x86_64 or aarch64, verifies it, and copies it to <code>~/.local/bin</code>.</p></div>
+        </li>
+        <li>
+          <span class="n">2</span>
+          <div><h3>Fetches the CodexBar CLI</h3><p>A static CodexBar CLI goes into <code>~/.local/lib/codexbar-cli</code> after a checksum check. If you already have one, it's reused.</p></div>
+        </li>
+        <li>
+          <span class="n">3</span>
+          <div><h3>Adds it to your desktop</h3><p>Launcher entry, icon and login autostart, then the tray starts. Skip parts with <code>--no-autostart</code> or <code>--no-start</code>.</p></div>
+        </li>
+        <li>
+          <span class="n">4</span>
+          <div><h3>Reuses your Claude login</h3><p>Sign in once with Claude Code (<code>claude</code>). The CLI reads the same credentials, so there's nothing to paste.</p></div>
+        </li>
+      </ol>
+      <div class="install-box wide">
+        <div class="cmd">
+          <code><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/gabors0/limitray/main/install.sh | sh</code>
+          <button class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/gabors0/limitray/main/install.sh | sh" aria-label="Copy install command">Copy</button>
+        </div>
+      </div>
+      <p class="note">Coming from <code>codexbar-tray</code>? Run the same command. It stops the old app, carries your settings over and cleans up the old entries.</p>
+    </section>
+
+    <!-- ───────── FAQ ───────── -->
+    <section class="section narrow" id="faq">
+      <div class="section-head">
+        <p class="eyebrow">FAQ</p>
+        <h2>Questions</h2>
+      </div>
+      <details>
+        <summary>Is this an official Anthropic, OpenAI or Google app?</summary>
+        <p>No. Limitray is an independent, unofficial open-source project. It's built on the <a href="https://github.com/steipete/CodexBar" rel="noopener">CodexBar</a> CLI by Peter Steinberger, which does the provider fetching, and it's separate from CodexBar's own desktop app.</p>
+      </details>
+      <details>
+        <summary>Does it need my API key or password?</summary>
+        <p>No. For Claude, sign in once with Claude Code (<code>claude</code>) and the CodexBar CLI reads those same credentials. Nothing is pasted into Limitray.</p>
+      </details>
+      <details>
+        <summary>How accurate is the spend number?</summary>
+        <p>It's an estimate: token counts from your local <code>~/.claude</code> and <code>~/.codex</code> logs priced at API list rates. On a subscription plan it shows what that usage would have cost on the API, not what you're billed.</p>
+      </details>
+      <details>
+        <summary>Which desktops work?</summary>
+        <p>Anything with a StatusNotifierItem tray: KDE Plasma, GNOME with the AppIndicator extension, Sway or Hyprland with a waybar tray, and X11 desktops. It picks up your KDE colour scheme and font, or follows the system light/dark preference.</p>
+      </details>
+      <details>
+        <summary>Does it update itself?</summary>
+        <p>It checks GitHub once a day and offers updates for itself and the CodexBar CLI it installed. Nothing installs without your click. The previous version is kept as <code>~/.local/bin/limitray.bak</code>. You can turn the check off under Settings → Advanced.</p>
+      </details>
+      <details>
+        <summary>How do I remove it?</summary>
+        <p><code>limitray uninstall</code> removes the app, its launcher and autostart entries, and the CodexBar CLI if Limitray installed it. Add <code>--purge</code> to also remove settings and cache.</p>
+      </details>
+    </section>
+
+    <section class="cta">
+      <h2>Stop refreshing the usage page.</h2>
+      <div class="install-box wide">
+        <div class="cmd">
+          <code><span class="prompt">$</span> curl -fsSL https://raw.githubusercontent.com/gabors0/limitray/main/install.sh | sh</code>
+          <button class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/gabors0/limitray/main/install.sh | sh" aria-label="Copy install command">Copy</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div>
+      <a class="brand small" href="/"><img src="/favicon.svg" alt="" width="20" height="20"><span>Limitray</span></a>
+      <p>MIT licensed. Built on <a href="https://github.com/steipete/CodexBar" rel="noopener">CodexBar</a> by Peter Steinberger; provider icons come from that project.</p>
+      <p class="faint">Not affiliated with or endorsed by Anthropic, OpenAI, Google or any other provider. Product names and logos belong to their owners.</p>
+    </div>
+    <div class="foot-links">
+      <a href="https://github.com/gabors0/limitray" rel="noopener">GitHub</a>
+      <a href="https://github.com/gabors0/limitray/releases" rel="noopener">Releases</a>
+      <a href="https://github.com/gabors0/limitray/issues" rel="noopener">Issues</a>
+    </div>
+  </footer>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
