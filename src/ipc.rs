@@ -1,7 +1,7 @@
 //! Line-delimited JSON over a private Unix socket between the daemon, the popup and CLI clients.
 
 use crate::config::{socket_path, Config};
-use crate::model::Snapshot;
+use crate::model::{Snapshot, UpdateTarget};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -26,6 +26,10 @@ pub enum Request {
     },
     /// Sent by the popup right before it closes because it lost focus.
     PopupClosing,
+    /// Install the offered update (the app then restarts on it).
+    InstallUpdate {
+        target: UpdateTarget,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

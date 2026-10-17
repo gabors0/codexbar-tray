@@ -11,6 +11,7 @@ mod popup;
 mod setup;
 mod theme;
 mod tray;
+mod update;
 
 const HELP: &str = "codexbar-tray — tray + popup for CodexBar (Claude-first)
 
@@ -18,6 +19,7 @@ USAGE:
   codexbar-tray install         Install app + CodexBar CLI + launcher + autostart, then start
         [--no-autostart] [--no-start] [--update-cli]
   codexbar-tray uninstall       Remove everything install added [--purge also drops settings]
+  codexbar-tray update          Update this app and the CLI it installed [--check only reports]
   codexbar-tray update-cli      Download the latest CodexBar CLI release
   codexbar-tray                 Start the tray; if it is already running, open the popup
   codexbar-tray --show          Start the tray (if needed) and open the popup
@@ -45,6 +47,8 @@ fn main() {
         setup::install(&args)
     } else if args.first().map(String::as_str) == Some("uninstall") {
         setup::uninstall(&args)
+    } else if args.first().map(String::as_str) == Some("update") {
+        update::run_cli(&args)
     } else if args.first().map(String::as_str) == Some("update-cli") {
         match setup::install_cli() {
             Ok(_) => {

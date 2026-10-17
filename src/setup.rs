@@ -18,6 +18,10 @@ fn home() -> PathBuf {
 fn bin_dir() -> PathBuf {
     home().join(".local/bin")
 }
+/// Where `install` puts the app; launcher and autostart entries point here.
+pub fn installed_path() -> PathBuf {
+    bin_dir().join(APP_ID)
+}
 fn cli_dir() -> PathBuf {
     home().join(".local/lib/codexbar-cli")
 }
@@ -52,7 +56,7 @@ fn have(cmd: &str) -> bool {
 }
 
 /// Download `url` to `dest` with curl (or wget).
-fn download(url: &str, dest: &Path) -> Result<(), String> {
+pub fn download(url: &str, dest: &Path) -> Result<(), String> {
     use std::io::IsTerminal;
     let tty = std::io::stderr().is_terminal();
     let status = if have("curl") {
@@ -86,7 +90,7 @@ fn download(url: &str, dest: &Path) -> Result<(), String> {
     }
 }
 
-fn fetch_text(url: &str) -> Result<String, String> {
+pub fn fetch_text(url: &str) -> Result<String, String> {
     let out = if have("curl") {
         Command::new("curl")
             .args(["-fsSL", "-H", "Accept: application/vnd.github+json", url])
@@ -101,7 +105,7 @@ fn fetch_text(url: &str) -> Result<String, String> {
     String::from_utf8(out.stdout).map_err(|e| e.to_string())
 }
 
-fn sha256(path: &Path) -> Result<String, String> {
+pub fn sha256(path: &Path) -> Result<String, String> {
     let out = Command::new("sha256sum")
         .arg(path)
         .output()
@@ -126,24 +130,26 @@ pub fn working_cli(cfg: &Config) -> Option<PathBuf> {
     ok.then_some(path)
 }
 
-/// Download the latest static (musl) CodexBar CLI release into ~/.local/lib/codexbar-cli and link
-/// ~/.local/bin/codexbar to it. Verifies the published SHA-256 before extracting anything.
-pub fn install_cli() -> Result<PathBuf, String> {
-    let arch = match std::env::consts::ARCH {
-        "x86_64" => "x86_64",
-        "aarch64" => "aarch64",
-        other => return Err(format!("No CodexBar CLI build for {other}")),
-    };
-    // Linux archives can lag a fresh tag by a while, so take the newest release that has ours.
-    let releases: serde_json::Value = serde_json::from_str(&fetch_text(&format!(
-        "https://api.github.com/repos/{CLI_REPO}/releases?per_page=10"
-    ))?)
-    .map_err(|e| format!("GitHub API: {e}"))?;
+/// A CodexBar CLI release with a static Linux build for this machine.
+pub struct CliRelease {
+    pub tag: String,
+    archive: String,
+    arch: &'static str,
+}
+
+impl CliRelease {
+    pub fn notes_url(&self) -> String {
+        format!("https://github.com/{CLI_REPO}/releases/tag/{}", self.tag)
+    }
+}
+
+/// The newest release in a GitHub "list releases" response that has a checksummed
+/// linux-musl archive for `arch`.
+fn pick_cli_release(releases: &serde_json::Value, arch: &'static str) -> Option<CliRelease> {
     let suffix = format!("-linux-musl-{arch}.tar.gz");
-    let (tag, name) = releases
-        .as_array()
-        .into_iter()
-        .flatten()
+    releases
+        .as_array()?
+        .iter()
         .filter(|r| r["draft"].as_bool() != Some(true) && r["prerelease"].as_bool() != Some(true))
         .find_map(|r| {
             let names: Vec<&str> = r["assets"]
@@ -156,14 +162,52 @@ pub fn install_cli() -> Result<PathBuf, String> {
                 .find(|n| n.starts_with("CodexBarCLI-") && n.ends_with(&suffix))?;
             names
                 .contains(&format!("{archive}.sha256").as_str())
-                .then(|| {
-                    (
-                        r["tag_name"].as_str().unwrap_or("?").to_string(),
-                        archive.to_string(),
-                    )
+                .then(|| CliRelease {
+                    tag: r["tag_name"].as_str().unwrap_or("?").to_string(),
+                    archive: archive.to_string(),
+                    arch,
                 })
         })
-        .ok_or_else(|| format!("No published CodexBar CLI build for linux-musl-{arch}"))?;
+}
+
+pub fn latest_cli_release() -> Result<CliRelease, String> {
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x86_64",
+        "aarch64" => "aarch64",
+        other => return Err(format!("No CodexBar CLI build for {other}")),
+    };
+    // Linux archives can lag a fresh tag by a while, so take the newest release that has ours.
+    let releases: serde_json::Value = serde_json::from_str(&fetch_text(&format!(
+        "https://api.github.com/repos/{CLI_REPO}/releases?per_page=10"
+    ))?)
+    .map_err(|e| format!("GitHub API: {e}"))?;
+    pick_cli_release(&releases, arch)
+        .ok_or_else(|| format!("No published CodexBar CLI build for linux-musl-{arch}"))
+}
+
+/// The release tag of the CLI that `install_cli` put in place, if that is the CLI `cfg` uses.
+/// A CLI the user installed or configured themselves is theirs to update.
+pub fn managed_cli_tag(cfg: &Config) -> Option<String> {
+    managed_tag(&cli_dir(), &cfg.resolved_cli())
+}
+
+fn managed_tag(cli_dir: &Path, used: &Path) -> Option<String> {
+    let dir = fs::canonicalize(cli_dir).ok()?;
+    if !fs::canonicalize(used).ok()?.starts_with(&dir) {
+        return None;
+    }
+    let tag = fs::read_to_string(dir.join(MARKER)).ok()?;
+    Some(tag.trim().to_string()).filter(|t| !t.is_empty())
+}
+
+/// Download the latest static (musl) CodexBar CLI release into ~/.local/lib/codexbar-cli and link
+/// ~/.local/bin/codexbar to it. Verifies the published SHA-256 before extracting anything.
+pub fn install_cli() -> Result<PathBuf, String> {
+    install_cli_release(&latest_cli_release()?)
+}
+
+fn install_cli_release(release: &CliRelease) -> Result<PathBuf, String> {
+    let (tag, name, arch) = (&release.tag, &release.archive, release.arch);
     let base = format!("https://github.com/{CLI_REPO}/releases/download/{tag}");
     let dir = cli_dir();
     let parent = dir.parent().unwrap().to_path_buf();
@@ -171,7 +215,7 @@ pub fn install_cli() -> Result<PathBuf, String> {
     let work = parent.join(".codexbar-cli.download");
     let _ = fs::remove_dir_all(&work);
     fs::create_dir_all(&work).map_err(|e| e.to_string())?;
-    let archive = work.join(&name);
+    let archive = work.join(name);
     step(&format!("Downloading CodexBar CLI {tag} ({arch}, static)…"));
     if let Err(e) = download(&format!("{base}/{name}"), &archive) {
         let _ = fs::remove_dir_all(&work);
@@ -202,8 +246,7 @@ pub fn install_cli() -> Result<PathBuf, String> {
         return Err("Could not extract the CLI archive".into());
     }
     let _ = fs::write(staged.join(MARKER), tag);
-    let _ = fs::remove_dir_all(&dir);
-    fs::rename(&staged, &dir).map_err(|e| e.to_string())?;
+    swap_dir(&staged, &dir).map_err(|e| e.to_string())?;
     let _ = fs::remove_dir_all(&work);
     // Point ~/.local/bin/codexbar at it, unless the user already has a real binary there.
     let link = bin_dir().join("codexbar");
@@ -218,6 +261,22 @@ pub fn install_cli() -> Result<PathBuf, String> {
     }
     step(&format!("CLI installed to {}", dir.display()));
     Ok(dir.join("codexbar"))
+}
+
+/// Put `staged` in place of `dir`. A running refresh only finds `dir` missing between two
+/// renames, not for the whole recursive delete; on failure the old `dir` is put back.
+fn swap_dir(staged: &Path, dir: &Path) -> std::io::Result<()> {
+    let old = dir.with_extension("old");
+    let _ = fs::remove_dir_all(&old);
+    let moved = fs::rename(dir, &old).is_ok();
+    if let Err(e) = fs::rename(staged, dir) {
+        if moved {
+            let _ = fs::rename(&old, dir);
+        }
+        return Err(e);
+    }
+    let _ = fs::remove_dir_all(&old);
+    Ok(())
 }
 
 fn write(path: &Path, contents: &[u8]) -> Result<(), String> {
@@ -267,7 +326,7 @@ fn claude_logged_in() -> bool {
     base.join(".credentials.json").exists()
 }
 
-fn start_detached(exe: &Path) {
+pub fn start_detached(exe: &Path) {
     use std::os::unix::process::CommandExt;
     let _ = Command::new(exe)
         .arg("--background")
@@ -288,7 +347,7 @@ pub fn install(args: &[String]) -> i32 {
             return 1;
         }
     };
-    let target = bin_dir().join(APP_ID);
+    let target = installed_path();
 
     // 1. Stop a running instance so its binary can be replaced.
     if crate::ipc::send(&crate::ipc::Request::Quit) {
@@ -409,7 +468,8 @@ pub fn uninstall(args: &[String]) -> i32 {
         autostart_dir().join(format!("{APP_ID}.desktop")),
         applications_dir().join(format!("{APP_ID}.desktop")),
         icon_path(),
-        bin_dir().join(APP_ID),
+        installed_path(),
+        installed_path().with_extension("bak"),
     ] {
         if fs::remove_file(&p).is_ok() {
             removed.push(p);
@@ -444,4 +504,118 @@ pub fn uninstall(args: &[String]) -> i32 {
         );
     }
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("codexbar-tray-setup-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn release(tag: &str, assets: &[&str]) -> serde_json::Value {
+        json!({
+            "tag_name": tag,
+            "draft": false,
+            "prerelease": false,
+            "assets": assets.iter().map(|n| json!({ "name": n })).collect::<Vec<_>>(),
+        })
+    }
+
+    #[test]
+    fn picks_newest_release_with_a_checksummed_linux_build() {
+        let releases = json!([
+            // Newest tag: Linux archives not uploaded yet.
+            release("v0.78.0", &["CodexBar-v0.78.0.dmg"]),
+            // Archive but no checksum: skipped.
+            release("v0.77.1", &["CodexBarCLI-v0.77.1-linux-musl-x86_64.tar.gz"]),
+            release(
+                "v0.77.0",
+                &[
+                    "CodexBar-v0.77.0.dmg",
+                    "CodexBarCLI-v0.77.0-linux-musl-aarch64.tar.gz",
+                    "CodexBarCLI-v0.77.0-linux-musl-aarch64.tar.gz.sha256",
+                    "CodexBarCLI-v0.77.0-linux-musl-x86_64.tar.gz",
+                    "CodexBarCLI-v0.77.0-linux-musl-x86_64.tar.gz.sha256",
+                ],
+            ),
+        ]);
+        let r = pick_cli_release(&releases, "x86_64").unwrap();
+        assert_eq!(r.tag, "v0.77.0");
+        assert_eq!(r.archive, "CodexBarCLI-v0.77.0-linux-musl-x86_64.tar.gz");
+        assert_eq!(
+            r.notes_url(),
+            "https://github.com/steipete/CodexBar/releases/tag/v0.77.0"
+        );
+        assert_eq!(
+            pick_cli_release(&releases, "aarch64").unwrap().archive,
+            "CodexBarCLI-v0.77.0-linux-musl-aarch64.tar.gz"
+        );
+
+        let mut pre = release(
+            "v0.79.0-beta.1",
+            &[
+                "CodexBarCLI-v0.79.0-beta.1-linux-musl-x86_64.tar.gz",
+                "CodexBarCLI-v0.79.0-beta.1-linux-musl-x86_64.tar.gz.sha256",
+            ],
+        );
+        pre["prerelease"] = json!(true);
+        assert!(pick_cli_release(&json!([pre]), "x86_64").is_none());
+    }
+
+    #[test]
+    fn only_our_own_cli_counts_as_managed() {
+        let root = scratch("managed");
+        let ours = root.join("codexbar-cli");
+        fs::create_dir_all(&ours).unwrap();
+        fs::write(ours.join("codexbar"), "").unwrap();
+        // ~/.local/bin/codexbar is a symlink into our directory.
+        let link = root.join("codexbar");
+        symlink(ours.join("codexbar"), &link).unwrap();
+        let theirs = root.join("their-codexbar");
+        fs::write(&theirs, "").unwrap();
+
+        assert_eq!(managed_tag(&ours, &link), None, "no marker: not ours");
+        fs::write(ours.join(MARKER), "v0.76.0\n").unwrap();
+        assert_eq!(managed_tag(&ours, &link).as_deref(), Some("v0.76.0"));
+        assert_eq!(
+            managed_tag(&ours, &ours.join("codexbar")).as_deref(),
+            Some("v0.76.0")
+        );
+        assert_eq!(managed_tag(&ours, &theirs), None, "user's own CLI");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn swap_dir_replaces_and_rolls_back() {
+        let root = scratch("swap");
+        let dir = root.join("codexbar-cli");
+        let staged = root.join("staged");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("version"), "old").unwrap();
+        fs::create_dir_all(&staged).unwrap();
+        fs::write(staged.join("version"), "new").unwrap();
+
+        swap_dir(&staged, &dir).unwrap();
+        assert_eq!(fs::read_to_string(dir.join("version")).unwrap(), "new");
+        assert!(!staged.exists());
+        assert!(!dir.with_extension("old").exists(), "old copy cleaned up");
+
+        // First install: nothing to move aside.
+        let fresh = root.join("fresh");
+        fs::create_dir_all(&staged).unwrap();
+        swap_dir(&staged, &fresh).unwrap();
+        assert!(fresh.is_dir());
+
+        // A failed swap leaves the working CLI where it was.
+        assert!(swap_dir(&root.join("missing"), &dir).is_err());
+        assert_eq!(fs::read_to_string(dir.join("version")).unwrap(), "new");
+        let _ = fs::remove_dir_all(&root);
+    }
 }

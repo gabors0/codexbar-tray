@@ -2,7 +2,7 @@ use crate::config::{Config, QuotaDisplay, TrayStyle, TrayWindow};
 use crate::daemon::Cmd;
 use crate::format;
 use crate::icon::{self, IconSpec, Level};
-use crate::model::{ProviderUsage, Snapshot, Window};
+use crate::model::{ProviderUsage, Snapshot, UpdateTarget, Window};
 use ab_glyph::FontVec;
 use ksni::menu::{CheckmarkItem, RadioGroup, RadioItem, StandardItem, SubMenu};
 use ksni::{MenuItem, Status, ToolTip};
@@ -597,6 +597,28 @@ impl ksni::Tray for CodexTray {
             );
         }
         items.push(MenuItem::Separator);
+        for (target, offer, name) in [
+            (UpdateTarget::App, &self.snapshot.update, "CodexBar Tray"),
+            (UpdateTarget::Cli, &self.snapshot.cli_update, "CodexBar CLI"),
+        ] {
+            let Some(u) = offer else { continue };
+            items.push(
+                StandardItem {
+                    label: if u.installing {
+                        format!("Updating {name} to {}…", u.version)
+                    } else if u.error.is_some() {
+                        format!("Update {name} to {} failed — retry", u.version)
+                    } else {
+                        format!("Update {name} to {}", u.version)
+                    },
+                    icon_name: "system-software-update".into(),
+                    enabled: !u.installing,
+                    activate: Box::new(move |t: &mut Self| t.send(Cmd::InstallUpdate(target))),
+                    ..Default::default()
+                }
+                .into(),
+            );
+        }
         items.push(
             StandardItem {
                 label: "Quit".into(),

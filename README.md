@@ -46,7 +46,20 @@ Without the CLI, the app still downloads it on first start, so the bare binary o
 Popup keys: `Ctrl+R` refresh, `Ctrl+,` settings, `Esc` close.
 
 Commands: `codexbar-tray --status` (JSON), `--refresh`, `--toggle` (bind it to a hotkey),
-`--quit`, `update-cli`, `uninstall [--purge]`.
+`--quit`, `update`, `update-cli`, `uninstall [--purge]`.
+
+## Updates
+
+Once a day the tray checks GitHub for new releases of itself and of the CodexBar CLI it installed.
+When one is out, the right-click menu and the popup offer to install it; nothing updates on its
+own. `codexbar-tray update` updates both from a terminal (`--check` only reports), and
+`update-cli` reinstalls just the CLI. Downloads are verified against their published SHA-256.
+The previous app version is kept as `~/.local/bin/codexbar-tray.bak`, and the tray restarts on
+the new one.
+
+Only the app copy in `~/.local/bin` updates itself, and only a CLI the app installed is offered
+updates; a CLI you installed yourself is left alone. Turn the daily check off under
+Settings → Advanced (`"check_updates": false`).
 
 ## Files
 

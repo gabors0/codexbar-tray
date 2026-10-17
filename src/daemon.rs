@@ -3,7 +3,7 @@
 use crate::config::{cache_path, socket_path, Config};
 use crate::fetch;
 use crate::ipc::{Request, State};
-use crate::model::{CostSummary, ProviderUsage, Snapshot};
+use crate::model::{CostSummary, ProviderUsage, Snapshot, UpdateOffer, UpdateTarget};
 use crate::tray::CodexTray;
 use crate::{format, theme};
 use chrono::Utc;
@@ -11,6 +11,7 @@ use ksni::blocking::TrayMethods;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -59,8 +60,18 @@ pub enum Cmd {
     PopupClosing,
     Subscribe(UnixStream),
     Get(UnixStream),
+    /// Result of a background update check: the newer version and its release notes, if any.
+    UpdateChecked(UpdateTarget, Option<(String, String)>),
+    InstallUpdate(UpdateTarget),
+    UpdateFailed(UpdateTarget, String),
+    /// A new CodexBar CLI is in place; fetch with it.
+    CliUpdated,
+    /// The installed binary was replaced; exec it.
+    Restart,
     Quit,
 }
+
+const UPDATE_CHECK_EVERY: Duration = Duration::from_secs(24 * 60 * 60);
 
 pub fn open_url(url: &str) {
     let _ = Command::new("xdg-open")
@@ -78,6 +89,8 @@ fn load_cache() -> Snapshot {
         .map(|mut s| {
             s.busy = false;
             s.from_cache = true;
+            s.update = None;
+            s.cli_update = None;
             s
         })
         .unwrap_or_default()
@@ -196,6 +209,9 @@ struct Daemon {
     generation: u64,
     last_cost: Option<Instant>,
     live_fetches: u32,
+    /// Only the installed copy offers to update itself. (CLI updates have their own check.)
+    self_managed: bool,
+    next_update_check: Instant,
 }
 
 impl Daemon {
@@ -336,6 +352,12 @@ impl Daemon {
         if !cfg.show_costs {
             self.snap.costs.clear();
         }
+        if cfg.check_updates && !self.cfg.check_updates {
+            self.next_update_check = Instant::now();
+        } else if !cfg.check_updates {
+            self.snap.update = None;
+            self.snap.cli_update = None;
+        }
         let _ = cfg.save();
         self.cfg = cfg;
         if refetch {
@@ -346,6 +368,89 @@ impl Daemon {
             } else {
                 self.refresh(true);
             }
+        }
+        self.publish();
+    }
+
+    fn offer(&mut self, target: UpdateTarget) -> &mut Option<UpdateOffer> {
+        match target {
+            UpdateTarget::App => &mut self.snap.update,
+            UpdateTarget::Cli => &mut self.snap.cli_update,
+        }
+    }
+
+    fn check_updates(&self) {
+        if !self.cfg.check_updates {
+            return;
+        }
+        let (tx, cfg, app) = (self.tx.clone(), self.cfg.clone(), self.self_managed);
+        // Offline or rate-limited: keep what we knew and try again next time.
+        std::thread::spawn(move || {
+            if app {
+                if let Ok(release) = crate::update::check() {
+                    let found = release.map(|r| (r.version.clone(), r.notes_url()));
+                    let _ = tx.send(Cmd::UpdateChecked(UpdateTarget::App, found));
+                }
+            }
+            if let Ok(cli) = crate::update::check_cli(&cfg) {
+                let found = cli.map(|u| (u.latest, u.notes_url));
+                let _ = tx.send(Cmd::UpdateChecked(UpdateTarget::Cli, found));
+            }
+        });
+    }
+
+    fn update_checked(&mut self, target: UpdateTarget, found: Option<(String, String)>) {
+        if !self.cfg.check_updates || self.offer(target).as_ref().is_some_and(|u| u.installing) {
+            return;
+        }
+        let offer = self.offer(target);
+        *offer = found.map(|(version, notes_url)| match offer.take() {
+            // Same release as before: keep a previous install error visible.
+            Some(u) if u.version == version => u,
+            _ => UpdateOffer {
+                version,
+                notes_url,
+                ..Default::default()
+            },
+        });
+        self.publish();
+    }
+
+    fn install_update(&mut self, target: UpdateTarget) {
+        if target == UpdateTarget::App && !self.self_managed {
+            return;
+        }
+        let Some(u) = self.offer(target).as_mut() else {
+            return;
+        };
+        if u.installing {
+            return;
+        }
+        u.installing = true;
+        u.error = None;
+        self.publish();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let result = match target {
+                UpdateTarget::App => crate::update::check()
+                    .and_then(|r| r.ok_or_else(|| "No newer release found".to_string()))
+                    .and_then(|r| crate::update::install(&r))
+                    .map(|_| Cmd::Restart),
+                UpdateTarget::Cli => crate::setup::install_cli().map(|_| Cmd::CliUpdated),
+            };
+            let _ = tx.send(result.unwrap_or_else(|e| Cmd::UpdateFailed(target, e)));
+        });
+    }
+
+    fn update_failed(&mut self, target: UpdateTarget, error: String) {
+        let what = match target {
+            UpdateTarget::App => "CodexBar update failed",
+            UpdateTarget::Cli => "CodexBar CLI update failed",
+        };
+        notify(what, &error, false);
+        if let Some(u) = self.offer(target).as_mut() {
+            u.installing = false;
+            u.error = Some(error);
         }
         self.publish();
     }
@@ -437,6 +542,7 @@ fn serve(listener: UnixListener, tx: Sender<Cmd>) {
                 Request::Quit => Cmd::Quit,
                 Request::SetConfig { config } => Cmd::SetConfig(config),
                 Request::PopupClosing => Cmd::PopupClosing,
+                Request::InstallUpdate { target } => Cmd::InstallUpdate(target),
             };
             let _ = tx.send(cmd);
         });
@@ -503,6 +609,9 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
         generation: 0,
         last_cost: None,
         live_fetches: 0,
+        self_managed: crate::update::self_managed(),
+        // Give login a minute to settle before talking to GitHub.
+        next_update_check: Instant::now() + Duration::from_secs(60),
     };
     d.refresh(false);
     if show_on_start {
@@ -512,8 +621,9 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
     // so the stale indicator and status stay current.
     let mut next_poll = Instant::now() + Duration::from_secs(d.cfg.refresh_secs);
     let mut next_tick = Instant::now() + Duration::from_secs(60);
+    let mut restart = false;
     loop {
-        let wake = next_poll.min(next_tick);
+        let wake = next_poll.min(next_tick).min(d.next_update_check);
         match rx.recv_timeout(wake.saturating_duration_since(Instant::now())) {
             Ok(Cmd::Refresh { force }) => {
                 d.refresh(force);
@@ -544,6 +654,18 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
             Ok(Cmd::Get(mut s)) => {
                 let _ = s.write_all(&d.state_line());
             }
+            Ok(Cmd::UpdateChecked(target, found)) => d.update_checked(target, found),
+            Ok(Cmd::InstallUpdate(target)) => d.install_update(target),
+            Ok(Cmd::UpdateFailed(target, e)) => d.update_failed(target, e),
+            Ok(Cmd::CliUpdated) => {
+                d.snap.cli_update = None;
+                d.refresh(true);
+                next_poll = Instant::now() + Duration::from_secs(d.cfg.refresh_secs);
+            }
+            Ok(Cmd::Restart) => {
+                restart = true;
+                break;
+            }
             Ok(Cmd::Quit) => break,
             Err(RecvTimeoutError::Timeout) => {
                 let now = Instant::now();
@@ -555,17 +677,29 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
                     d.publish();
                     next_tick = now + Duration::from_secs(60);
                 }
+                if now >= d.next_update_check {
+                    d.check_updates();
+                    d.next_update_check = now + UPDATE_CHECK_EVERY;
+                }
             }
             Err(RecvTimeoutError::Disconnected) => break,
         }
     }
     if let Some(mut c) = d.popup.take() {
         let _ = c.kill();
+        let _ = c.wait();
     }
     if let Some(t) = d.tray.take() {
         t.shutdown().wait();
     }
     let _ = std::fs::remove_file(&sock);
+    if restart {
+        // Our own executable was just replaced; become the new one.
+        let exe = crate::setup::installed_path();
+        let err = Command::new(&exe).arg("--background").exec();
+        eprintln!("codexbar-tray: cannot restart {}: {err}", exe.display());
+        return 1;
+    }
     0
 }
 
