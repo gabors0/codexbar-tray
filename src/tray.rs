@@ -263,7 +263,10 @@ impl ksni::Tray for CodexTray {
             .take()
             .filter(|(_, at)| at.elapsed().as_secs() < 10)
             .map(|(t, _)| t);
-        self.send(Cmd::TogglePopup { token, pos: (x, y) });
+        self.send(Cmd::TogglePopup {
+            token,
+            pos: Some((x, y)),
+        });
     }
 
     fn provide_xdg_activation_token(&mut self, token: String) {
