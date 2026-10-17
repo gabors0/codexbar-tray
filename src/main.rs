@@ -19,7 +19,7 @@ USAGE:
   codexbar-tray install         Install app + CodexBar CLI + launcher + autostart, then start
         [--no-autostart] [--no-start] [--update-cli]
   codexbar-tray uninstall       Remove everything install added [--purge also drops settings]
-  codexbar-tray update          Update this app to the latest release [--check only reports]
+  codexbar-tray update          Update this app and the CLI it installed [--check only reports]
   codexbar-tray update-cli      Download the latest CodexBar CLI release
   codexbar-tray                 Start the tray; if it is already running, open the popup
   codexbar-tray --show          Start the tray (if needed) and open the popup

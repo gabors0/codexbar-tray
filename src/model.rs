@@ -115,10 +115,20 @@ pub struct CostSummary {
     pub error: Option<String>,
 }
 
-/// A newer codexbar-tray release, and how installing it is going.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateTarget {
+    /// codexbar-tray itself.
+    App,
+    /// The CodexBar CLI that codexbar-tray installed.
+    Cli,
+}
+
+/// A newer release of the app or the CLI, and how installing it is going.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub struct AppUpdate {
+pub struct UpdateOffer {
     pub version: String,
+    pub notes_url: String,
     pub installing: bool,
     pub error: Option<String>,
 }
@@ -136,7 +146,9 @@ pub struct Snapshot {
     #[serde(default)]
     pub notice: Option<String>,
     #[serde(default)]
-    pub update: Option<AppUpdate>,
+    pub update: Option<UpdateOffer>,
+    #[serde(default)]
+    pub cli_update: Option<UpdateOffer>,
 }
 
 impl Snapshot {

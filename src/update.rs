@@ -1,8 +1,10 @@
-//! Self-update from GitHub releases: `codexbar-tray update` and the tray's "Update to …" item.
+//! Updates from GitHub releases: `codexbar-tray update` and the tray's "Update …" items.
 //! Only the copy `install` put in ~/.local/bin replaces itself; other copies (a dev build, a
-//! distro package) never offer updates.
+//! distro package) never offer updates. Likewise only a CLI that `install_cli` put in place is
+//! offered CLI updates.
 
-use crate::setup::{download, fetch_text, installed_path, sha256};
+use crate::config::Config;
+use crate::setup::{download, fetch_text, installed_path, managed_cli_tag, sha256};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -31,12 +33,17 @@ pub fn current() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-/// `v1.2.3` / `1.2.3` (ignoring any `-pre` or `+build` suffix) → (1, 2, 3).
+/// `v1.2.3` / `1.2.3` / `v1.2` (ignoring any `-pre` or `+build` suffix) → (1, 2, 3). Older
+/// CodexBar tags have only two parts.
 fn parse_version(s: &str) -> Option<(u64, u64, u64)> {
     let core = s.trim().trim_start_matches('v');
     let core = core.split(['-', '+']).next()?;
     let mut parts = core.split('.').map(|p| p.parse::<u64>().ok());
-    let v = (parts.next()??, parts.next()??, parts.next()??);
+    let v = (
+        parts.next()??,
+        parts.next()??,
+        parts.next().unwrap_or(Some(0))?,
+    );
     parts.next().is_none().then_some(v)
 }
 
@@ -81,6 +88,26 @@ pub fn check() -> Result<Option<Release>, String> {
     ))?)
     .map_err(|e| format!("GitHub API: {e}"))?;
     Ok(release_from_json(&json, current(), arch))
+}
+
+/// A newer CodexBar CLI than the one codexbar-tray installed.
+pub struct CliUpdate {
+    pub installed: String,
+    pub latest: String,
+    pub notes_url: String,
+}
+
+/// Whether a newer CLI release exists. Always `None` for a CLI codexbar-tray didn't install.
+pub fn check_cli(cfg: &Config) -> Result<Option<CliUpdate>, String> {
+    let Some(installed) = managed_cli_tag(cfg) else {
+        return Ok(None);
+    };
+    let latest = crate::setup::latest_cli_release()?;
+    Ok(is_newer(&latest.tag, &installed).then(|| CliUpdate {
+        notes_url: latest.notes_url(),
+        latest: latest.tag,
+        installed,
+    }))
 }
 
 /// Whether this process is the installed copy, i.e. the one an update would replace.
@@ -144,60 +171,94 @@ fn stage(release: &Release, staged: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// `codexbar-tray update [--check]`
+/// `codexbar-tray update [--check]`: the app, and the CodexBar CLI if codexbar-tray installed it.
 pub fn run_cli(args: &[String]) -> i32 {
     let check_only = args.iter().any(|a| a == "--check");
-    if !check_only && !installed_path().exists() {
-        eprintln!(
-            "codexbar-tray is not installed in {}; run `codexbar-tray install` first",
-            installed_path().display()
-        );
-        return 1;
-    }
-    let release = match check() {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            println!("codexbar-tray {} is up to date", current());
-            return 0;
-        }
-        Err(e) => {
-            eprintln!("Cannot check for updates: {e}");
-            return 1;
-        }
-    };
-    println!(
-        "Update available: {} → {}  ({})",
-        current(),
-        release.version,
-        release.notes_url()
-    );
-    if check_only {
-        return 0;
-    }
-    let target = match install(&release) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Update failed: {e}");
-            return 1;
-        }
-    };
-    println!(
-        "Installed codexbar-tray {} to {}",
-        release.version,
-        target.display()
-    );
-    // Restart a running instance on the new binary. Quit + start works whatever its version.
-    if crate::ipc::send(&crate::ipc::Request::Quit) {
-        for _ in 0..50 {
-            if crate::ipc::connect().is_none() {
-                break;
+    let mut ok = true;
+
+    let mut new_app = None;
+    match check() {
+        Ok(None) => println!("codexbar-tray {} is up to date", current()),
+        Ok(Some(release)) => {
+            println!(
+                "codexbar-tray update available: {} → {}  ({})",
+                current(),
+                release.version,
+                release.notes_url()
+            );
+            if !check_only {
+                match install(&release) {
+                    Ok(target) => {
+                        println!("  Installed codexbar-tray {}", release.version);
+                        new_app = Some(target);
+                    }
+                    Err(e) => {
+                        eprintln!("  Update failed: {e}");
+                        ok = false;
+                    }
+                }
             }
-            std::thread::sleep(std::time::Duration::from_millis(100));
         }
-        crate::setup::start_detached(&target);
-        println!("Restarted the tray");
+        Err(e) => {
+            eprintln!("Cannot check for codexbar-tray updates: {e}");
+            ok = false;
+        }
     }
-    0
+
+    let cfg = Config::load();
+    let mut new_cli = false;
+    match check_cli(&cfg) {
+        Ok(None) => match managed_cli_tag(&cfg) {
+            Some(tag) => println!("CodexBar CLI {tag} is up to date"),
+            None if !cfg.resolved_cli().is_file() => {
+                println!("No CodexBar CLI found; `codexbar-tray update-cli` installs it")
+            }
+            None => println!(
+                "CodexBar CLI at {} was not installed by codexbar-tray; update it yourself",
+                cfg.resolved_cli().display()
+            ),
+        },
+        Ok(Some(u)) => {
+            println!(
+                "CodexBar CLI update available: {} → {}  ({})",
+                u.installed, u.latest, u.notes_url
+            );
+            if !check_only {
+                match crate::setup::install_cli() {
+                    Ok(_) => new_cli = true,
+                    Err(e) => {
+                        eprintln!("  CLI update failed: {e}");
+                        ok = false;
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Cannot check for CodexBar CLI updates: {e}");
+            ok = false;
+        }
+    }
+
+    if let Some(target) = new_app {
+        // Restart a running instance on the new binary. Quit + start works whatever its version.
+        if crate::ipc::send(&crate::ipc::Request::Quit) {
+            for _ in 0..50 {
+                if crate::ipc::connect().is_none() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            crate::setup::start_detached(&target);
+            println!("Restarted the tray");
+        }
+    } else if new_cli {
+        crate::ipc::send(&crate::ipc::Request::Refresh);
+    }
+    if ok {
+        0
+    } else {
+        1
+    }
 }
 
 #[cfg(test)]
@@ -209,7 +270,12 @@ mod tests {
     fn compares_versions() {
         assert_eq!(parse_version("v0.2.0"), Some((0, 2, 0)));
         assert_eq!(parse_version("1.10.3-rc.1"), Some((1, 10, 3)));
-        assert_eq!(parse_version("1.2"), None);
+        assert_eq!(
+            parse_version("v0.25"),
+            Some((0, 25, 0)),
+            "older CodexBar tags"
+        );
+        assert_eq!(parse_version("1"), None);
         assert_eq!(parse_version("1.2.3.4"), None);
         assert_eq!(parse_version("latest"), None);
         assert!(is_newer("v0.3.0", "0.2.0"));
@@ -218,6 +284,9 @@ mod tests {
         assert!(!is_newer("v0.2.0", "0.2.0"));
         assert!(!is_newer("v0.1.0", "0.2.0"));
         assert!(!is_newer("nonsense", "0.2.0"));
+        assert!(is_newer("v0.77.0", "v0.76.0"));
+        assert!(is_newer("v0.26.0", "v0.25"));
+        assert!(!is_newer("v0.77.0", "v0.77.0"));
     }
 
     fn release_json(tag: &str, assets: &[&str]) -> serde_json::Value {

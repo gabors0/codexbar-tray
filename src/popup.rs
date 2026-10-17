@@ -5,7 +5,9 @@ use crate::config::{Config, QuotaDisplay, TrayStyle, TrayWindow};
 use crate::format;
 use crate::icon::brand_color;
 use crate::ipc::{self, Request, State};
-use crate::model::{provider_name, CostSummary, ProviderUsage, Snapshot, Window};
+use crate::model::{
+    provider_name, CostSummary, ProviderUsage, Snapshot, UpdateOffer, UpdateTarget, Window,
+};
 use crate::theme::{self, Rgb};
 use chrono::{Duration as ChronoDuration, Local};
 use eframe::egui::{
@@ -1340,7 +1342,11 @@ impl PopupApp {
     }
 }
 
-fn update_banner(ui: &mut Ui, pal: &Palette, update: &crate::model::AppUpdate) {
+fn update_banner(ui: &mut Ui, pal: &Palette, target: UpdateTarget, update: &UpdateOffer) {
+    let name = match target {
+        UpdateTarget::App => "CodexBar Tray",
+        UpdateTarget::Cli => "CodexBar CLI",
+    };
     let tint = if update.error.is_some() {
         pal.bad
     } else {
@@ -1354,9 +1360,9 @@ fn update_banner(ui: &mut Ui, pal: &Palette, update: &crate::model::AppUpdate) {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 let text = if update.installing {
-                    format!("Updating to {}…", update.version)
+                    format!("Updating {name} to {}…", update.version)
                 } else {
-                    format!("CodexBar Tray {} is available", update.version)
+                    format!("{name} {} is available", update.version)
                 };
                 ui.label(RichText::new(text).size(12.0));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -1367,11 +1373,11 @@ fn update_banner(ui: &mut Ui, pal: &Palette, update: &crate::model::AppUpdate) {
                             "Update"
                         };
                         if ui.small_button(label).clicked() {
-                            ipc::send(&Request::InstallUpdate);
+                            ipc::send(&Request::InstallUpdate { target });
                         }
                     }
                     if link(ui, pal, "What's new").clicked() {
-                        crate::daemon::open_url(&crate::update::notes_url(&update.version));
+                        crate::daemon::open_url(&update.notes_url);
                     }
                 });
             });
@@ -1478,9 +1484,14 @@ impl eframe::App for PopupApp {
                                 });
                             ui.add_space(6.0);
                         }
-                        if let Some(update) = &snapshot.update {
-                            update_banner(ui, &pal, update);
-                            ui.add_space(6.0);
+                        for (target, offer) in [
+                            (UpdateTarget::App, &snapshot.update),
+                            (UpdateTarget::Cli, &snapshot.cli_update),
+                        ] {
+                            if let Some(offer) = offer {
+                                update_banner(ui, &pal, target, offer);
+                                ui.add_space(6.0);
+                            }
                         }
                         match self.view {
                             View::Usage => self.usage_view(ui, &snapshot, &config),
