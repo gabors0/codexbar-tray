@@ -1,4 +1,4 @@
-//! Self-installation: `codexbar-tray install` puts the app, the CodexBar CLI, a launcher entry,
+//! Self-installation: `limitray install` puts the app, the CodexBar CLI, a launcher entry,
 //! an icon and login autostart in place, so a single downloaded binary is all a user needs.
 
 use crate::config::{runtime_dir, Config};
@@ -9,8 +9,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const CLI_REPO: &str = "steipete/CodexBar";
-const MARKER: &str = ".installed-by-codexbar-tray";
-const APP_ID: &str = "codexbar-tray";
+const MARKER: &str = ".installed-by-limitray";
+const APP_ID: &str = "limitray";
+/// This app's name until v0.3.0.
+const LEGACY_APP_ID: &str = "codexbar-tray";
+const LEGACY_MARKER: &str = ".installed-by-codexbar-tray";
 
 fn home() -> PathBuf {
     dirs::home_dir().expect("no home directory")
@@ -35,11 +38,17 @@ fn autostart_dir() -> PathBuf {
         .unwrap_or_else(|| home().join(".config"))
         .join("autostart")
 }
-fn icon_path() -> PathBuf {
+fn icon_path_for(app: &str) -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| home().join(".local/share"))
         .join("icons/hicolor/256x256/apps")
-        .join(format!("{APP_ID}.png"))
+        .join(format!("{app}.png"))
+}
+fn icon_path() -> PathBuf {
+    icon_path_for(APP_ID)
+}
+fn installed_by_us(cli_dir: &Path) -> bool {
+    cli_dir.join(MARKER).exists() || cli_dir.join(LEGACY_MARKER).exists()
 }
 
 fn step(msg: &str) {
@@ -196,7 +205,9 @@ fn managed_tag(cli_dir: &Path, used: &Path) -> Option<String> {
     if !fs::canonicalize(used).ok()?.starts_with(&dir) {
         return None;
     }
-    let tag = fs::read_to_string(dir.join(MARKER)).ok()?;
+    let tag = fs::read_to_string(dir.join(MARKER))
+        .or_else(|_| fs::read_to_string(dir.join(LEGACY_MARKER)))
+        .ok()?;
     Some(tag.trim().to_string()).filter(|t| !t.is_empty())
 }
 
@@ -288,7 +299,7 @@ fn write(path: &Path, contents: &[u8]) -> Result<(), String> {
 
 fn desktop_entry(exec: &Path, background: bool) -> String {
     format!(
-        "[Desktop Entry]\nType=Application\nName=CodexBar Tray\nGenericName=AI usage monitor\nComment=Claude and Codex usage limits in your tray\nExec=\"{}\"{}\nIcon={APP_ID}\nTerminal=false\nCategories=Utility;Monitor;\nKeywords=claude;codex;usage;quota;limits;\nStartupNotify=false\n{}",
+        "[Desktop Entry]\nType=Application\nName=Limitray\nGenericName=AI usage monitor\nComment=Claude, Codex and other AI usage limits in your tray\nExec=\"{}\"{}\nIcon={APP_ID}\nTerminal=false\nCategories=Utility;Monitor;\nKeywords=claude;codex;usage;quota;limits;\nStartupNotify=false\n{}",
         exec.display(),
         if background { " --background" } else { "" },
         if background { "X-GNOME-Autostart-enabled=true\nX-KDE-autostart-after=panel\n" } else { "" }
@@ -296,7 +307,7 @@ fn desktop_entry(exec: &Path, background: bool) -> String {
 }
 
 /// Hide launcher/autostart entries of the CodexBar Qt desktop app and of the earlier
-/// `codexbar-linux` build of this app, so the launcher shows one CodexBar and login starts one.
+/// `codexbar-linux` build of this app, so the launcher shows one usage tray and login starts one.
 fn retire_qt_entries() {
     // The earlier build listened on its own socket; ask it to quit.
     if let Ok(mut s) =
@@ -316,6 +327,43 @@ fn retire_qt_entries() {
                 step(&format!("Disabled old entry → {}", to.display()));
             }
         }
+    }
+}
+
+/// Replace an install of this app from before it was renamed (codexbar-tray → limitray): stop
+/// it, and remove its binary, launcher, autostart, icon, cache and settings. Run after the new
+/// config is saved, since `Config::load` reads the old settings when there are no new ones.
+fn retire_legacy_app() {
+    let legacy_sock = runtime_dir().join(format!("{LEGACY_APP_ID}.sock"));
+    if let Ok(mut s) = std::os::unix::net::UnixStream::connect(&legacy_sock) {
+        let _ = s.write_all(b"{\"cmd\":\"quit\"}\n");
+        for _ in 0..30 {
+            if !legacy_sock.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        step(&format!("Stopped the old {LEGACY_APP_ID}"));
+    }
+    let legacy_bin = bin_dir().join(LEGACY_APP_ID);
+    let mut removed = false;
+    for path in [
+        legacy_bin.with_extension("bak"),
+        legacy_bin,
+        applications_dir().join(format!("{LEGACY_APP_ID}.desktop")),
+        autostart_dir().join(format!("{LEGACY_APP_ID}.desktop")),
+        icon_path_for(LEGACY_APP_ID),
+    ] {
+        removed |= fs::remove_file(path).is_ok();
+    }
+    for dir in [dirs::cache_dir(), dirs::config_dir()]
+        .into_iter()
+        .flatten()
+    {
+        removed |= fs::remove_dir_all(dir.join(LEGACY_APP_ID)).is_ok();
+    }
+    if removed {
+        step(&format!("Replaced {LEGACY_APP_ID} (settings carried over)"));
     }
 }
 
@@ -339,7 +387,7 @@ pub fn start_detached(exe: &Path) {
 
 pub fn install(args: &[String]) -> i32 {
     let flag = |f: &str| args.iter().any(|a| a == f);
-    println!("Installing CodexBar for Linux");
+    println!("Installing Limitray");
     let me = match std::env::current_exe() {
         Ok(p) => p,
         Err(e) => {
@@ -392,7 +440,9 @@ pub fn install(args: &[String]) -> i32 {
             }
         },
     }
-    let _ = cfg.save();
+    if cfg.save().is_ok() {
+        retire_legacy_app();
+    }
 
     // 4. Launcher entry, icon, autostart.
     let (r, g, b) = crate::icon::brand_color("claude");
@@ -429,7 +479,7 @@ pub fn install(args: &[String]) -> i32 {
     ) {
         eprintln!("  ! {e}");
     }
-    step("Added CodexBar to the application launcher");
+    step("Added Limitray to the application launcher");
     let autostart = autostart_dir().join(format!("{APP_ID}.desktop"));
     if flag("--no-autostart") {
         let _ = fs::remove_file(&autostart);
@@ -447,12 +497,12 @@ pub fn install(args: &[String]) -> i32 {
     if !std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).any(|p| p == bin_dir())
     {
         println!(
-            "\nNote: {} is not on your PATH. Add it to run `codexbar-tray` from a terminal.",
+            "\nNote: {} is not on your PATH. Add it to run `limitray` from a terminal.",
             bin_dir().display()
         );
     }
     if !claude_logged_in() {
-        println!("\nClaude: no login found in ~/.claude. Install Claude Code and run `claude` once to sign in;\nCodexBar reads the same credentials (nothing to paste).");
+        println!("\nClaude: no login found in ~/.claude. Install Claude Code and run `claude` once to sign in;\nThe CodexBar CLI reads the same credentials (nothing to paste).");
     }
     println!("\nDone. Click the tray icon for details, scroll on it to switch session/weekly, middle-click to refresh.");
     let _ = std::io::stdout().flush();
@@ -477,7 +527,7 @@ pub fn uninstall(args: &[String]) -> i32 {
     }
     // Only remove the CLI if this tool installed it.
     let dir = cli_dir();
-    if dir.join(MARKER).exists() {
+    if installed_by_us(&dir) {
         let link = bin_dir().join("codexbar");
         if fs::read_link(&link).is_ok_and(|t| t.starts_with(&dir)) {
             let _ = fs::remove_file(&link);
@@ -493,7 +543,7 @@ pub fn uninstall(args: &[String]) -> i32 {
             }
         }
     }
-    let _ = fs::remove_file(runtime_dir().join("codexbar-tray.sock"));
+    let _ = fs::remove_file(runtime_dir().join("limitray.sock"));
     for p in &removed {
         println!("  removed {}", p.display());
     }
@@ -513,7 +563,7 @@ mod tests {
 
     fn scratch(name: &str) -> PathBuf {
         let dir =
-            std::env::temp_dir().join(format!("codexbar-tray-setup-{}-{name}", std::process::id()));
+            std::env::temp_dir().join(format!("limitray-setup-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -589,6 +639,12 @@ mod tests {
             Some("v0.76.0")
         );
         assert_eq!(managed_tag(&ours, &theirs), None, "user's own CLI");
+
+        // A CLI installed before the rename still counts as ours.
+        fs::remove_file(ours.join(MARKER)).unwrap();
+        fs::write(ours.join(LEGACY_MARKER), "v0.75.0\n").unwrap();
+        assert_eq!(managed_tag(&ours, &link).as_deref(), Some("v0.75.0"));
+        assert!(installed_by_us(&ours));
         let _ = fs::remove_dir_all(&root);
     }
 

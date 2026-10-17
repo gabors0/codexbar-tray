@@ -164,11 +164,11 @@ fn esc(s: &str) -> String {
 
 impl ksni::Tray for CodexTray {
     fn id(&self) -> String {
-        "codexbar-tray".into()
+        "limitray".into()
     }
 
     fn title(&self) -> String {
-        "CodexBar".into()
+        "Limitray".into()
     }
 
     fn category(&self) -> ksni::Category {
@@ -196,10 +196,10 @@ impl ksni::Tray for CodexTray {
     }
 
     fn tool_tip(&self) -> ToolTip {
-        let mut title = String::from("CodexBar");
+        let mut title = String::from("Limitray");
         let mut lines: Vec<String> = Vec::new();
         for p in &self.snapshot.providers {
-            if self.snapshot.providers.len() > 1 || title == "CodexBar" {
+            if self.snapshot.providers.len() > 1 || title == "Limitray" {
                 if self.snapshot.providers.len() == 1 {
                     title = match &p.plan {
                         Some(plan) => format!("{} · {}", p.name(), plan),
@@ -358,7 +358,7 @@ impl ksni::Tray for CodexTray {
         items.push(MenuItem::Separator);
         items.push(
             StandardItem {
-                label: "Open CodexBar".into(),
+                label: "Open Limitray".into(),
                 icon_name: "view-statistics".into(),
                 activate: Box::new(|t: &mut Self| t.send(Cmd::ShowPopup { token: None })),
                 ..Default::default()
@@ -598,7 +598,7 @@ impl ksni::Tray for CodexTray {
         }
         items.push(MenuItem::Separator);
         for (target, offer, name) in [
-            (UpdateTarget::App, &self.snapshot.update, "CodexBar Tray"),
+            (UpdateTarget::App, &self.snapshot.update, "Limitray"),
             (UpdateTarget::Cli, &self.snapshot.cli_update, "CodexBar CLI"),
         ] {
             let Some(u) = offer else { continue };

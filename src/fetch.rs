@@ -202,7 +202,7 @@ mod tests {
 
     /// A stand-in CodexBar CLI: a shell script with the given body.
     fn fake_cli(name: &str, body: &str) -> Config {
-        let dir = std::env::temp_dir().join(format!("codexbar-tray-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("limitray-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(name);
         std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();

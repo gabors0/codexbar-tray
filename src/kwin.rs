@@ -4,7 +4,7 @@
 use crate::config::runtime_dir;
 use zbus::blocking::Connection;
 
-const NAME: &str = "codexbar-popup-placement";
+const NAME: &str = "limitray-popup-placement";
 
 const SCRIPT: &str = r#"
 // Copy the cursor into plain numbers now: `workspace.cursorPos` is a live value-type
@@ -14,7 +14,7 @@ const cursor = workspace.cursorPos;
 const anchorX = Number(cursor.x);
 const anchorY = Number(cursor.y);
 function place(w) {
-    if (!w || String(w.resourceClass) !== "codexbar-tray-popup") return;
+    if (!w || String(w.resourceClass) !== "limitray-popup") return;
     let area = null;
     let top = true;
     const fit = () => {

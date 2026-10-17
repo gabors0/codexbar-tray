@@ -18,7 +18,7 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME#v}"
           crate=$(cargo metadata --no-deps --format-version 1 \
-            | jq -r '.packages[] | select(.name == "codexbar-tray") | .version')
+            | jq -r '.packages[] | select(.name == "limitray") | .version')
           echo "tag: $tag  Cargo.toml: $crate"
           if [ "$tag" != "$crate" ]; then
             echo "::error file=Cargo.toml::Tag $GITHUB_REF_NAME does not match Cargo.toml version $crate"
@@ -43,11 +43,11 @@ jobs:
         run: |
           cargo build --release --locked
           mkdir -p dist
-          cp target/release/codexbar-tray "dist/codexbar-tray-${{ matrix.arch }}"
-          cd dist && sha256sum "codexbar-tray-${{ matrix.arch }}" > "codexbar-tray-${{ matrix.arch }}.sha256"
+          cp target/release/limitray "dist/limitray-${{ matrix.arch }}"
+          cd dist && sha256sum "limitray-${{ matrix.arch }}" > "limitray-${{ matrix.arch }}.sha256"
       - uses: actions/upload-artifact@v4
         with:
-          name: codexbar-tray-${{ matrix.arch }}
+          name: limitray-${{ matrix.arch }}
           path: dist/*
 
   release:
@@ -68,4 +68,4 @@ jobs:
             ```sh
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh
             ```
-            Or download `codexbar-tray-<arch>`, `chmod +x` it and run `./codexbar-tray-<arch> install`.
+            Or download `limitray-<arch>`, `chmod +x` it and run `./limitray-<arch> install`.

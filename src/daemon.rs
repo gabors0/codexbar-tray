@@ -109,10 +109,10 @@ fn save_cache(s: &Snapshot) {
 
 fn notify(summary: &str, body: &str, urgent: bool) {
     let mut n = notify_rust::Notification::new();
-    n.appname("CodexBar")
+    n.appname("Limitray")
         .summary(summary)
         .body(body)
-        .icon("codexbar-tray")
+        .icon("limitray")
         .timeout(notify_rust::Timeout::Milliseconds(8000));
     if urgent {
         n.urgency(notify_rust::Urgency::Critical);
@@ -265,7 +265,7 @@ impl Daemon {
                 let _ = tx.send(Cmd::Notice(Some("Downloading the CodexBar CLI…".into())));
                 let result = crate::setup::install_cli();
                 let _ = tx.send(Cmd::Notice(result.err().map(|e| {
-                    format!("CodexBar CLI missing: {e}. Run `codexbar-tray update-cli`.")
+                    format!("CodexBar CLI missing: {e}. Run `limitray update-cli`.")
                 })));
             }
             let costs = want_costs.then(|| {
@@ -444,7 +444,7 @@ impl Daemon {
 
     fn update_failed(&mut self, target: UpdateTarget, error: String) {
         let what = match target {
-            UpdateTarget::App => "CodexBar update failed",
+            UpdateTarget::App => "Limitray update failed",
             UpdateTarget::Cli => "CodexBar CLI update failed",
         };
         notify(what, &error, false);
@@ -564,7 +564,7 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
     let listener = match UnixListener::bind(&sock) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("codexbar-tray: cannot bind {}: {e}", sock.display());
+            eprintln!("limitray: cannot bind {}: {e}", sock.display());
             return 1;
         }
     };
@@ -592,7 +592,7 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
     let tray = match tray.spawn() {
         Ok(h) => Some(h),
         Err(e) => {
-            eprintln!("codexbar-tray: tray unavailable ({e}); running headless");
+            eprintln!("limitray: tray unavailable ({e}); running headless");
             None
         }
     };
@@ -697,7 +697,7 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
         // Our own executable was just replaced; become the new one.
         let exe = crate::setup::installed_path();
         let err = Command::new(&exe).arg("--background").exec();
-        eprintln!("codexbar-tray: cannot restart {}: {err}", exe.display());
+        eprintln!("limitray: cannot restart {}: {err}", exe.display());
         return 1;
     }
     0

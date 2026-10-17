@@ -118,9 +118,9 @@ pub struct CostSummary {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateTarget {
-    /// codexbar-tray itself.
+    /// limitray itself.
     App,
-    /// The CodexBar CLI that codexbar-tray installed.
+    /// The CodexBar CLI that limitray installed.
     Cli,
 }
 

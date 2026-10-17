@@ -1,13 +1,13 @@
 [package]
-name = "codexbar-tray"
-version = "0.2.0"
+name = "limitray"
+version = "0.3.0"
 edition = "2021"
 build = "build.rs"
-description = "Linux tray + popup for CodexBar (Claude-first)"
+description = "Claude (and other AI) usage limits in your Linux tray, powered by the CodexBar CLI"
 license = "MIT"
 
 [[bin]]
-name = "codexbar-tray"
+name = "limitray"
 path = "src/main.rs"
 
 [dependencies]
