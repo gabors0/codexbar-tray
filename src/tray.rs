@@ -594,6 +594,24 @@ impl ksni::Tray for CodexTray {
             );
         }
         items.push(MenuItem::Separator);
+        if let Some(u) = &self.snapshot.update {
+            items.push(
+                StandardItem {
+                    label: if u.installing {
+                        format!("Updating to {}…", u.version)
+                    } else if u.error.is_some() {
+                        format!("Update to {} failed — retry", u.version)
+                    } else {
+                        format!("Update to {}", u.version)
+                    },
+                    icon_name: "system-software-update".into(),
+                    enabled: !u.installing,
+                    activate: Box::new(|t: &mut Self| t.send(Cmd::InstallUpdate)),
+                    ..Default::default()
+                }
+                .into(),
+            );
+        }
         items.push(
             StandardItem {
                 label: "Quit".into(),

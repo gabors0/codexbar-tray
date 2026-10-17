@@ -18,6 +18,10 @@ fn home() -> PathBuf {
 fn bin_dir() -> PathBuf {
     home().join(".local/bin")
 }
+/// Where `install` puts the app; launcher and autostart entries point here.
+pub fn installed_path() -> PathBuf {
+    bin_dir().join(APP_ID)
+}
 fn cli_dir() -> PathBuf {
     home().join(".local/lib/codexbar-cli")
 }
@@ -52,7 +56,7 @@ fn have(cmd: &str) -> bool {
 }
 
 /// Download `url` to `dest` with curl (or wget).
-fn download(url: &str, dest: &Path) -> Result<(), String> {
+pub fn download(url: &str, dest: &Path) -> Result<(), String> {
     use std::io::IsTerminal;
     let tty = std::io::stderr().is_terminal();
     let status = if have("curl") {
@@ -86,7 +90,7 @@ fn download(url: &str, dest: &Path) -> Result<(), String> {
     }
 }
 
-fn fetch_text(url: &str) -> Result<String, String> {
+pub fn fetch_text(url: &str) -> Result<String, String> {
     let out = if have("curl") {
         Command::new("curl")
             .args(["-fsSL", "-H", "Accept: application/vnd.github+json", url])
@@ -101,7 +105,7 @@ fn fetch_text(url: &str) -> Result<String, String> {
     String::from_utf8(out.stdout).map_err(|e| e.to_string())
 }
 
-fn sha256(path: &Path) -> Result<String, String> {
+pub fn sha256(path: &Path) -> Result<String, String> {
     let out = Command::new("sha256sum")
         .arg(path)
         .output()
@@ -267,7 +271,7 @@ fn claude_logged_in() -> bool {
     base.join(".credentials.json").exists()
 }
 
-fn start_detached(exe: &Path) {
+pub fn start_detached(exe: &Path) {
     use std::os::unix::process::CommandExt;
     let _ = Command::new(exe)
         .arg("--background")
@@ -288,7 +292,7 @@ pub fn install(args: &[String]) -> i32 {
             return 1;
         }
     };
-    let target = bin_dir().join(APP_ID);
+    let target = installed_path();
 
     // 1. Stop a running instance so its binary can be replaced.
     if crate::ipc::send(&crate::ipc::Request::Quit) {
@@ -409,7 +413,8 @@ pub fn uninstall(args: &[String]) -> i32 {
         autostart_dir().join(format!("{APP_ID}.desktop")),
         applications_dir().join(format!("{APP_ID}.desktop")),
         icon_path(),
-        bin_dir().join(APP_ID),
+        installed_path(),
+        installed_path().with_extension("bak"),
     ] {
         if fs::remove_file(&p).is_ok() {
             removed.push(p);

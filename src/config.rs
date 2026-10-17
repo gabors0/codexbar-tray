@@ -79,6 +79,8 @@ pub struct Config {
     pub close_on_blur: bool,
     /// Source passed to the CLI. "auto" tries OAuth first for Claude (fast), then falls back.
     pub source: String,
+    /// Ask GitHub once a day whether a newer codexbar-tray release exists.
+    pub check_updates: bool,
 }
 
 impl Default for Config {
@@ -98,6 +100,7 @@ impl Default for Config {
             notify_reset: true,
             close_on_blur: true,
             source: "auto".into(),
+            check_updates: true,
         }
     }
 }

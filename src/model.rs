@@ -115,6 +115,14 @@ pub struct CostSummary {
     pub error: Option<String>,
 }
 
+/// A newer codexbar-tray release, and how installing it is going.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct AppUpdate {
+    pub version: String,
+    pub installing: bool,
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Snapshot {
     pub providers: Vec<ProviderUsage>,
@@ -127,6 +135,8 @@ pub struct Snapshot {
     /// Transient app-level message, e.g. "Downloading CodexBar CLI…".
     #[serde(default)]
     pub notice: Option<String>,
+    #[serde(default)]
+    pub update: Option<AppUpdate>,
 }
 
 impl Snapshot {

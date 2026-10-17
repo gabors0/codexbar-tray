@@ -26,6 +26,8 @@ pub enum Request {
     },
     /// Sent by the popup right before it closes because it lost focus.
     PopupClosing,
+    /// Install the available app update, then restart on it.
+    InstallUpdate,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -1295,6 +1295,17 @@ impl PopupApp {
                 src = opts[sel].0.to_string();
                 draft.source = src;
             }
+            ui.add_space(4.0);
+            toggle(
+                ui,
+                &pal,
+                &mut draft.check_updates,
+                "Check for app updates",
+                Some(&format!(
+                    "Asks GitHub once a day · this is {}",
+                    crate::update::current()
+                )),
+            );
         });
         ui.add_space(8.0);
         ui.horizontal(|ui| {
@@ -1327,6 +1338,47 @@ impl PopupApp {
         }
         self.draft = Some(draft);
     }
+}
+
+fn update_banner(ui: &mut Ui, pal: &Palette, update: &crate::model::AppUpdate) {
+    let tint = if update.error.is_some() {
+        pal.bad
+    } else {
+        pal.good
+    };
+    Frame::new()
+        .fill(tint.gamma_multiply(0.14))
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(Margin::symmetric(10, 6))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                let text = if update.installing {
+                    format!("Updating to {}…", update.version)
+                } else {
+                    format!("CodexBar Tray {} is available", update.version)
+                };
+                ui.label(RichText::new(text).size(12.0));
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if !update.installing {
+                        let label = if update.error.is_some() {
+                            "Retry"
+                        } else {
+                            "Update"
+                        };
+                        if ui.small_button(label).clicked() {
+                            ipc::send(&Request::InstallUpdate);
+                        }
+                    }
+                    if link(ui, pal, "What's new").clicked() {
+                        crate::daemon::open_url(&crate::update::notes_url(&update.version));
+                    }
+                });
+            });
+            if let Some(e) = &update.error {
+                ui.label(RichText::new(e).size(11.0).color(pal.muted));
+            }
+        });
 }
 
 fn section(ui: &mut Ui, pal: &Palette, title: &str) {
@@ -1424,6 +1476,10 @@ impl eframe::App for PopupApp {
                                     ui.set_width(ui.available_width());
                                     ui.label(RichText::new(notice).size(12.0));
                                 });
+                            ui.add_space(6.0);
+                        }
+                        if let Some(update) = &snapshot.update {
+                            update_banner(ui, &pal, update);
                             ui.add_space(6.0);
                         }
                         match self.view {
