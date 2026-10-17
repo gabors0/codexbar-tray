@@ -153,13 +153,14 @@ impl Config {
 
     pub fn sanitize(&mut self) {
         self.refresh_secs = self.refresh_secs.clamp(60, 3600);
+        let mut seen = std::collections::HashSet::new();
         self.providers.retain(|p| {
             !p.is_empty()
                 && p.len() <= 40
                 && p.chars()
                     .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                && seen.insert(p.clone())
         });
-        self.providers.dedup();
         if self.providers.is_empty() {
             self.providers.push("claude".into());
         }
@@ -241,4 +242,66 @@ fn is_executable(p: &Path) -> bool {
     p.metadata()
         .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_cleans_up_hand_edited_settings() {
+        let mut cfg = Config {
+            refresh_secs: 5,
+            providers: vec![
+                "claude".into(),
+                "codex".into(),
+                "Bad Name".into(),
+                "".into(),
+                "claude".into(),
+                "codex".into(),
+            ],
+            tray_provider: "gemini".into(),
+            notify_thresholds: vec![95, 0, 80, 101, 80],
+            source: "telepathy".into(),
+            ..Config::default()
+        };
+        cfg.sanitize();
+        assert_eq!(cfg.refresh_secs, 60);
+        assert_eq!(
+            cfg.providers,
+            ["claude", "codex"],
+            "non-adjacent duplicates too"
+        );
+        assert_eq!(cfg.tray_provider, "claude");
+        assert_eq!(cfg.notify_thresholds, [80, 95]);
+        assert_eq!(cfg.source, "auto");
+
+        cfg.refresh_secs = 999_999;
+        cfg.sanitize();
+        assert_eq!(cfg.refresh_secs, 3600);
+    }
+
+    #[test]
+    fn sanitize_never_leaves_providers_empty() {
+        let mut cfg = Config {
+            providers: vec!["NOPE".into()],
+            ..Config::default()
+        };
+        cfg.sanitize();
+        assert_eq!(cfg.providers, ["claude"]);
+        assert_eq!(cfg.tray_provider, "claude");
+    }
+
+    #[test]
+    fn sanitize_keeps_valid_settings() {
+        let mut cfg = Config {
+            providers: vec!["codex".into(), "claude".into()],
+            tray_provider: "claude".into(),
+            source: "oauth".into(),
+            ..Config::default()
+        };
+        let before = cfg.clone();
+        cfg.sanitize();
+        assert_eq!(cfg, before);
+    }
 }

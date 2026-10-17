@@ -13,8 +13,28 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+/// When the CLI is missing or broken, download it again at most this often (a manual refresh
+/// retries right away), so a CLI that installs but still won't run isn't re-fetched every poll.
+static CLI_INSTALL_AT: Mutex<Option<Instant>> = Mutex::new(None);
+const CLI_INSTALL_RETRY: Duration = Duration::from_secs(60 * 60);
+
+fn cli_install_due(last: Option<Instant>, now: Instant, force: bool) -> bool {
+    force || last.is_none_or(|t| now.duration_since(t) >= CLI_INSTALL_RETRY)
+}
+
+/// True (and records the attempt) when a CLI download may start now.
+fn claim_cli_install(force: bool) -> bool {
+    let mut last = CLI_INSTALL_AT.lock().unwrap();
+    let now = Instant::now();
+    let due = cli_install_due(*last, now, force);
+    if due {
+        *last = Some(now);
+    }
+    due
+}
 
 pub enum Cmd {
     Refresh {
@@ -30,7 +50,8 @@ pub enum Cmd {
     SetConfig(Config),
     TogglePopup {
         token: Option<String>,
-        pos: (i32, i32),
+        /// Where the tray icon was clicked; `None` (e.g. `--toggle` from a hotkey) centers it.
+        pos: Option<(i32, i32)>,
     },
     ShowPopup {
         token: Option<String>,
@@ -92,8 +113,26 @@ fn notifications(
     prev: &HashMap<String, (f64, Option<chrono::DateTime<Utc>>)>,
     providers: &[ProviderUsage],
 ) {
+    for n in pending_notifications(cfg, prev, providers) {
+        notify(&n.summary, &n.body, n.urgent);
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct Alert {
+    summary: String,
+    body: String,
+    urgent: bool,
+}
+
+fn pending_notifications(
+    cfg: &Config,
+    prev: &HashMap<String, (f64, Option<chrono::DateTime<Utc>>)>,
+    providers: &[ProviderUsage],
+) -> Vec<Alert> {
+    let mut out = Vec::new();
     if !cfg.notifications {
-        return;
+        return out;
     }
     for p in providers.iter().filter(|p| p.error.is_none()) {
         for w in &p.windows {
@@ -106,26 +145,43 @@ fn notifications(
                 .rev()
                 .find(|&&t| before < t as f64 && w.used >= t as f64);
             if let Some(&t) = crossed {
-                let critical = Some(&t) == cfg.notify_thresholds.last();
-                notify(
-                    &format!("{} {} at {:.0}%", p.name(), w.label.to_lowercase(), w.used),
-                    &format!("Crossed {t}% · {}", format::resets_in(w.resets_at)),
-                    critical,
-                );
+                out.push(Alert {
+                    summary: format!("{} {} at {:.0}%", p.name(), w.label.to_lowercase(), w.used),
+                    body: format!("Crossed {t}% · {}", format::resets_in(w.resets_at)),
+                    urgent: Some(&t) == cfg.notify_thresholds.last(),
+                });
             } else if cfg.notify_reset
                 && w.is_session()
                 && before >= 50.0
                 && w.used + 30.0 < before
                 && old_reset != w.resets_at
             {
-                notify(
-                    &format!("{} {} reset", p.name(), w.label.to_lowercase()),
-                    &format!("Back to {:.0}% used. Fresh window.", w.used),
-                    false,
-                );
+                out.push(Alert {
+                    summary: format!("{} {} reset", p.name(), w.label.to_lowercase()),
+                    body: format!("Back to {:.0}% used. Fresh window.", w.used),
+                    urgent: false,
+                });
             }
         }
     }
+    out
+}
+
+/// Keep the last good windows for a provider whose fetch failed, flagged with the error.
+fn merge_last_good(old: &Snapshot, providers: Vec<ProviderUsage>) -> Vec<ProviderUsage> {
+    let mut merged = Vec::new();
+    for mut p in providers {
+        if p.error.is_some() && p.windows.is_empty() {
+            if let Some(o) = old.provider(&p.id).filter(|o| !o.windows.is_empty()) {
+                let mut keep = o.clone();
+                keep.error = p.error.take();
+                merged.push(keep);
+                continue;
+            }
+        }
+        merged.push(p);
+    }
+    merged
 }
 
 struct Daemon {
@@ -189,7 +245,7 @@ impl Daemon {
         }
         std::thread::spawn(move || {
             // First run without a CLI: fetch it, so a lone downloaded binary just works.
-            if crate::setup::working_cli(&cfg).is_none() {
+            if crate::setup::working_cli(&cfg).is_none() && claim_cli_install(force) {
                 let _ = tx.send(Cmd::Notice(Some("Downloading the CodexBar CLI…".into())));
                 let result = crate::setup::install_cli();
                 let _ = tx.send(Cmd::Notice(result.err().map(|e| {
@@ -229,19 +285,7 @@ impl Daemon {
             self.refresh(false);
             return;
         }
-        // Keep the last good windows for a provider whose fetch failed, flagged with the error.
-        let mut merged = Vec::new();
-        for mut p in providers {
-            if p.error.is_some() && p.windows.is_empty() {
-                if let Some(old) = self.snap.provider(&p.id).filter(|o| !o.windows.is_empty()) {
-                    let mut keep = old.clone();
-                    keep.error = p.error.take();
-                    merged.push(keep);
-                    continue;
-                }
-            }
-            merged.push(p);
-        }
+        let merged = merge_last_good(&self.snap, providers);
         if self.live_fetches > 0 {
             notifications(&self.cfg, &self.last_values, &merged);
         }
@@ -341,7 +385,7 @@ impl Daemon {
         }
     }
 
-    fn toggle_popup(&mut self, token: Option<String>, pos: (i32, i32)) {
+    fn toggle_popup(&mut self, token: Option<String>, pos: Option<(i32, i32)>) {
         if self.popup_alive() {
             if let Some(mut c) = self.popup.take() {
                 let _ = c.kill();
@@ -358,7 +402,7 @@ impl Daemon {
             self.popup_closed_at = None;
             return;
         }
-        self.show_popup(token, Some(pos));
+        self.show_popup(token, pos);
     }
 }
 
@@ -388,7 +432,7 @@ fn serve(listener: UnixListener, tx: Sender<Cmd>) {
                 },
                 Request::Toggle => Cmd::TogglePopup {
                     token: None,
-                    pos: (0, 0),
+                    pos: None,
                 },
                 Request::Quit => Cmd::Quit,
                 Request::SetConfig { config } => Cmd::SetConfig(config),
@@ -523,4 +567,185 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
     }
     let _ = std::fs::remove_file(&sock);
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Window;
+    use chrono::TimeZone;
+
+    fn reset(hour: u32) -> Option<chrono::DateTime<Utc>> {
+        Some(Utc.with_ymd_and_hms(2026, 10, 17, hour, 0, 0).unwrap())
+    }
+
+    fn window(
+        key: &str,
+        minutes: u32,
+        used: f64,
+        resets_at: Option<chrono::DateTime<Utc>>,
+    ) -> Window {
+        Window {
+            key: key.into(),
+            label: if minutes == 10080 {
+                "Weekly"
+            } else {
+                "Session"
+            }
+            .into(),
+            minutes: Some(minutes),
+            used,
+            resets_at,
+            ..Default::default()
+        }
+    }
+
+    fn claude(windows: Vec<Window>) -> ProviderUsage {
+        ProviderUsage {
+            id: "claude".into(),
+            windows,
+            ..Default::default()
+        }
+    }
+
+    fn prev(
+        entries: &[(&str, f64, Option<chrono::DateTime<Utc>>)],
+    ) -> HashMap<String, (f64, Option<chrono::DateTime<Utc>>)> {
+        entries
+            .iter()
+            .map(|(k, used, at)| (format!("claude/{k}"), (*used, *at)))
+            .collect()
+    }
+
+    #[test]
+    fn notifies_on_threshold_crossing() {
+        let cfg = Config::default(); // thresholds 80, 95
+        let alerts = pending_notifications(
+            &cfg,
+            &prev(&[("primary", 70.0, reset(17))]),
+            &[claude(vec![window("primary", 300, 85.0, reset(17))])],
+        );
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].summary, "Claude session at 85%");
+        assert!(alerts[0].body.starts_with("Crossed 80%"));
+        assert!(!alerts[0].urgent);
+    }
+
+    #[test]
+    fn jumping_past_several_thresholds_notifies_once_for_the_highest() {
+        let alerts = pending_notifications(
+            &Config::default(),
+            &prev(&[("primary", 70.0, reset(17))]),
+            &[claude(vec![window("primary", 300, 97.0, reset(17))])],
+        );
+        assert_eq!(alerts.len(), 1);
+        assert!(alerts[0].body.starts_with("Crossed 95%"));
+        assert!(alerts[0].urgent, "the last threshold is critical");
+    }
+
+    #[test]
+    fn stays_quiet_without_a_crossing() {
+        let cfg = Config::default();
+        // Already above 80 and still below 95.
+        let p = [claude(vec![window("primary", 300, 90.0, reset(17))])];
+        assert!(pending_notifications(&cfg, &prev(&[("primary", 85.0, reset(17))]), &p).is_empty());
+        // First sighting of a window: nothing to compare against.
+        assert!(pending_notifications(&cfg, &HashMap::new(), &p).is_empty());
+        // Providers that failed to fetch never notify.
+        let mut failed = claude(vec![window("primary", 300, 99.0, reset(17))]);
+        failed.error = Some("offline".into());
+        assert!(
+            pending_notifications(&cfg, &prev(&[("primary", 10.0, reset(17))]), &[failed])
+                .is_empty()
+        );
+        // Notifications turned off.
+        let off = Config {
+            notifications: false,
+            ..Config::default()
+        };
+        let p = [claude(vec![window("primary", 300, 99.0, reset(17))])];
+        assert!(pending_notifications(&off, &prev(&[("primary", 10.0, reset(17))]), &p).is_empty());
+    }
+
+    #[test]
+    fn notifies_on_session_reset_only() {
+        let cfg = Config::default();
+        let alerts = pending_notifications(
+            &cfg,
+            &prev(&[("primary", 90.0, reset(17))]),
+            &[claude(vec![window("primary", 300, 5.0, reset(22))])],
+        );
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].summary, "Claude session reset");
+
+        // Same reset time: a correction in the data, not a new window.
+        let same = pending_notifications(
+            &cfg,
+            &prev(&[("primary", 90.0, reset(17))]),
+            &[claude(vec![window("primary", 300, 5.0, reset(17))])],
+        );
+        assert!(same.is_empty());
+
+        // Weekly windows don't announce resets.
+        let weekly = pending_notifications(
+            &cfg,
+            &prev(&[("secondary", 90.0, reset(17))]),
+            &[claude(vec![window("secondary", 10080, 5.0, reset(22))])],
+        );
+        assert!(weekly.is_empty());
+
+        let quiet = Config {
+            notify_reset: false,
+            ..Config::default()
+        };
+        let off = pending_notifications(
+            &quiet,
+            &prev(&[("primary", 90.0, reset(17))]),
+            &[claude(vec![window("primary", 300, 5.0, reset(22))])],
+        );
+        assert!(off.is_empty());
+    }
+
+    #[test]
+    fn failed_fetch_keeps_last_good_windows() {
+        let old = Snapshot {
+            providers: vec![claude(vec![window("primary", 300, 42.0, reset(17))])],
+            ..Default::default()
+        };
+        let failed = ProviderUsage {
+            id: "claude".into(),
+            error: Some("rate limited".into()),
+            ..Default::default()
+        };
+        let unknown = ProviderUsage {
+            id: "codex".into(),
+            error: Some("not logged in".into()),
+            ..Default::default()
+        };
+        let merged = merge_last_good(&old, vec![failed, unknown.clone()]);
+        assert_eq!(merged[0].windows, old.providers[0].windows);
+        assert_eq!(merged[0].error.as_deref(), Some("rate limited"));
+        assert_eq!(merged[1], unknown, "nothing to fall back to");
+
+        // A successful fetch replaces the old data.
+        let fresh = claude(vec![window("primary", 300, 50.0, reset(17))]);
+        assert_eq!(merge_last_good(&old, vec![fresh.clone()]), vec![fresh]);
+    }
+
+    #[test]
+    fn cli_install_backs_off() {
+        let now = Instant::now();
+        assert!(cli_install_due(None, now, false));
+        assert!(!cli_install_due(
+            Some(now),
+            now + Duration::from_secs(60),
+            false
+        ));
+        assert!(cli_install_due(
+            Some(now),
+            now + Duration::from_secs(60),
+            true
+        ));
+        assert!(cli_install_due(Some(now), now + CLI_INSTALL_RETRY, false));
+    }
 }
