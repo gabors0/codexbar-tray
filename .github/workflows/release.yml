@@ -1,9 +1,17 @@
 name: Release
 
+# Release either by pushing a `v*` tag, or from the Actions tab ("Run workflow") with a version
+# such as v0.3.0: the run checks it, builds, and creates the tag together with the release, so no
+# terminal is needed. Running it without a version only builds.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version to release, e.g. v0.3.0 (empty: build only)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -11,19 +19,35 @@ permissions:
 jobs:
   version:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
       - name: Check tag matches Cargo.toml version
-        if: startsWith(github.ref, 'refs/tags/v')
+        id: check
+        env:
+          TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          if [ -z "$TAG" ]; then
+            echo "No version given: building only"
+            exit 0
+          fi
+          case "$TAG" in
+            v[0-9]*) ;;
+            *) echo "::error::Version must look like v1.2.3, got '$TAG'"; exit 1 ;;
+          esac
           crate=$(cargo metadata --no-deps --format-version 1 \
             | jq -r '.packages[] | select(.name == "limitray") | .version')
-          echo "tag: $tag  Cargo.toml: $crate"
-          if [ "$tag" != "$crate" ]; then
-            echo "::error file=Cargo.toml::Tag $GITHUB_REF_NAME does not match Cargo.toml version $crate"
+          echo "tag: ${TAG#v}  Cargo.toml: $crate"
+          if [ "${TAG#v}" != "$crate" ]; then
+            echo "::error file=Cargo.toml::Tag $TAG does not match Cargo.toml version $crate"
             exit 1
           fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag $TAG already exists; push a new version instead of re-releasing"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
   build:
     needs: version
@@ -51,8 +75,8 @@ jobs:
           path: dist/*
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    if: needs.version.outputs.tag != ''
+    needs: [version, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -61,6 +85,9 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          # For a run from the Actions tab the tag doesn't exist yet; create it at this commit.
+          target_commitish: ${{ github.sha }}
           files: dist/*
           make_latest: legacy
           body: |
