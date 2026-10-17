@@ -462,25 +462,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codexbar-tray"
-version = "0.2.0"
-dependencies = [
- "ab_glyph",
- "chrono",
- "dirs",
- "eframe",
- "egui_extras",
- "image",
- "ksni",
- "libc",
- "notify-rust",
- "resvg 0.48.1",
- "serde",
- "serde_json",
- "zbus",
-]
-
-[[package]]
 name = "color"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1570,6 +1551,25 @@ dependencies = [
  "libc",
  "plain",
  "redox_syscall 0.9.4",
+]
+
+[[package]]
+name = "limitray"
+version = "0.3.0"
+dependencies = [
+ "ab_glyph",
+ "chrono",
+ "dirs",
+ "eframe",
+ "egui_extras",
+ "image",
+ "ksni",
+ "libc",
+ "notify-rust",
+ "resvg 0.48.1",
+ "serde",
+ "serde_json",
+ "zbus",
 ]
 
 [[package]]

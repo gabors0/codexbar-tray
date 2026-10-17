@@ -1,4 +1,4 @@
-//! Updates from GitHub releases: `codexbar-tray update` and the tray's "Update …" items.
+//! Updates from GitHub releases: `limitray update` and the tray's "Update …" items.
 //! Only the copy `install` put in ~/.local/bin replaces itself; other copies (a dev build, a
 //! distro package) never offer updates. Likewise only a CLI that `install_cli` put in place is
 //! offered CLI updates.
@@ -10,7 +10,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-const REPO: &str = "gabors0/codexbar-tray";
+const REPO: &str = "gabors0/limitray";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Release {
@@ -60,7 +60,7 @@ fn release_from_json(json: &serde_json::Value, current: &str, arch: &str) -> Opt
     if !is_newer(tag, current) {
         return None;
     }
-    let asset = format!("codexbar-tray-{arch}");
+    let asset = format!("limitray-{arch}");
     let names: Vec<&str> = json["assets"]
         .as_array()?
         .iter()
@@ -81,7 +81,7 @@ fn release_from_json(json: &serde_json::Value, current: &str, arch: &str) -> Opt
 pub fn check() -> Result<Option<Release>, String> {
     let arch = match std::env::consts::ARCH {
         a @ ("x86_64" | "aarch64") => a,
-        other => return Err(format!("No codexbar-tray build for {other}")),
+        other => return Err(format!("No limitray build for {other}")),
     };
     let json: serde_json::Value = serde_json::from_str(&fetch_text(&format!(
         "https://api.github.com/repos/{REPO}/releases/latest"
@@ -90,14 +90,14 @@ pub fn check() -> Result<Option<Release>, String> {
     Ok(release_from_json(&json, current(), arch))
 }
 
-/// A newer CodexBar CLI than the one codexbar-tray installed.
+/// A newer CodexBar CLI than the one limitray installed.
 pub struct CliUpdate {
     pub installed: String,
     pub latest: String,
     pub notes_url: String,
 }
 
-/// Whether a newer CLI release exists. Always `None` for a CLI codexbar-tray didn't install.
+/// Whether a newer CLI release exists. Always `None` for a CLI limitray didn't install.
 pub fn check_cli(cfg: &Config) -> Result<Option<CliUpdate>, String> {
     let Some(installed) = managed_cli_tag(cfg) else {
         return Ok(None);
@@ -118,17 +118,17 @@ pub fn self_managed() -> bool {
 }
 
 /// Download, verify and swap in `release` at the installed path. The previous binary is kept as
-/// `codexbar-tray.bak`. Running instances keep the old code until they restart.
+/// `limitray.bak`. Running instances keep the old code until they restart.
 pub fn install(release: &Release) -> Result<PathBuf, String> {
     let target = installed_path();
     if !target.exists() {
         return Err(format!(
-            "{} not found; run `codexbar-tray install` first",
+            "{} not found; run `limitray install` first",
             target.display()
         ));
     }
     // Stage next to the target so the final rename is atomic (same filesystem).
-    let staged = target.with_file_name(".codexbar-tray.update");
+    let staged = target.with_file_name(".limitray.update");
     let result = stage(release, &staged).and_then(|()| {
         let _ = fs::copy(&target, target.with_extension("bak"));
         fs::rename(&staged, &target).map_err(|e| format!("{}: {e}", target.display()))
@@ -161,7 +161,7 @@ fn stage(release: &Release, staged: &std::path::Path) -> Result<(), String> {
         .output()
         .map_err(|e| format!("The downloaded binary does not run: {e}"))?;
     let reported = String::from_utf8_lossy(&out.stdout);
-    if reported.trim() != format!("codexbar-tray {}", release.version) {
+    if reported.trim() != format!("limitray {}", release.version) {
         return Err(format!(
             "The downloaded binary reports {:?}, expected {}",
             reported.trim(),
@@ -171,17 +171,17 @@ fn stage(release: &Release, staged: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// `codexbar-tray update [--check]`: the app, and the CodexBar CLI if codexbar-tray installed it.
+/// `limitray update [--check]`: the app, and the CodexBar CLI if limitray installed it.
 pub fn run_cli(args: &[String]) -> i32 {
     let check_only = args.iter().any(|a| a == "--check");
     let mut ok = true;
 
     let mut new_app = None;
     match check() {
-        Ok(None) => println!("codexbar-tray {} is up to date", current()),
+        Ok(None) => println!("limitray {} is up to date", current()),
         Ok(Some(release)) => {
             println!(
-                "codexbar-tray update available: {} → {}  ({})",
+                "limitray update available: {} → {}  ({})",
                 current(),
                 release.version,
                 release.notes_url()
@@ -189,7 +189,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             if !check_only {
                 match install(&release) {
                     Ok(target) => {
-                        println!("  Installed codexbar-tray {}", release.version);
+                        println!("  Installed limitray {}", release.version);
                         new_app = Some(target);
                     }
                     Err(e) => {
@@ -200,7 +200,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             }
         }
         Err(e) => {
-            eprintln!("Cannot check for codexbar-tray updates: {e}");
+            eprintln!("Cannot check for limitray updates: {e}");
             ok = false;
         }
     }
@@ -211,10 +211,10 @@ pub fn run_cli(args: &[String]) -> i32 {
         Ok(None) => match managed_cli_tag(&cfg) {
             Some(tag) => println!("CodexBar CLI {tag} is up to date"),
             None if !cfg.resolved_cli().is_file() => {
-                println!("No CodexBar CLI found; `codexbar-tray update-cli` installs it")
+                println!("No CodexBar CLI found; `limitray update-cli` installs it")
             }
             None => println!(
-                "CodexBar CLI at {} was not installed by codexbar-tray; update it yourself",
+                "CodexBar CLI at {} was not installed by limitray; update it yourself",
                 cfg.resolved_cli().display()
             ),
         },
@@ -301,28 +301,28 @@ mod tests {
     #[test]
     fn picks_this_machines_binary() {
         let all = [
-            "codexbar-tray-x86_64",
-            "codexbar-tray-x86_64.sha256",
-            "codexbar-tray-aarch64",
-            "codexbar-tray-aarch64.sha256",
+            "limitray-x86_64",
+            "limitray-x86_64.sha256",
+            "limitray-aarch64",
+            "limitray-aarch64.sha256",
         ];
         let r = release_from_json(&release_json("v0.3.0", &all), "0.2.0", "aarch64").unwrap();
         assert_eq!(r.version, "0.3.0");
         assert_eq!(r.tag, "v0.3.0");
-        assert_eq!(r.asset, "codexbar-tray-aarch64");
+        assert_eq!(r.asset, "limitray-aarch64");
         assert_eq!(
             r.notes_url(),
-            "https://github.com/gabors0/codexbar-tray/releases/tag/v0.3.0"
+            "https://github.com/gabors0/limitray/releases/tag/v0.3.0"
         );
     }
 
     #[test]
     fn ignores_releases_it_should_not_install() {
-        let all = ["codexbar-tray-x86_64", "codexbar-tray-x86_64.sha256"];
+        let all = ["limitray-x86_64", "limitray-x86_64.sha256"];
         // Not newer.
         assert!(release_from_json(&release_json("v0.2.0", &all), "0.2.0", "x86_64").is_none());
         // No checksum published: never install unverified.
-        let no_sum = release_json("v0.3.0", &["codexbar-tray-x86_64"]);
+        let no_sum = release_json("v0.3.0", &["limitray-x86_64"]);
         assert!(release_from_json(&no_sum, "0.2.0", "x86_64").is_none());
         // No build for this architecture.
         assert!(release_from_json(&release_json("v0.3.0", &all), "0.2.0", "aarch64").is_none());

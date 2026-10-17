@@ -79,7 +79,7 @@ pub struct Config {
     pub close_on_blur: bool,
     /// Source passed to the CLI. "auto" tries OAuth first for Claude (fast), then falls back.
     pub source: String,
-    /// Ask GitHub once a day whether a newer codexbar-tray release exists.
+    /// Ask GitHub once a day whether a newer limitray release exists.
     pub check_updates: bool,
 }
 
@@ -108,23 +108,23 @@ impl Default for Config {
 pub fn config_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("~/.config"))
-        .join("codexbar-tray/config.json")
+        .join("limitray/config.json")
 }
 
 pub fn cache_path() -> PathBuf {
     dirs::cache_dir()
         .unwrap_or_else(std::env::temp_dir)
-        .join("codexbar-tray/snapshot.json")
+        .join("limitray/snapshot.json")
 }
 
 pub fn runtime_dir() -> PathBuf {
     dirs::runtime_dir().unwrap_or_else(|| {
-        std::env::temp_dir().join(format!("codexbar-{}", unsafe { libc::getuid() }))
+        std::env::temp_dir().join(format!("limitray-{}", unsafe { libc::getuid() }))
     })
 }
 
 pub fn socket_path() -> PathBuf {
-    runtime_dir().join("codexbar-tray.sock")
+    runtime_dir().join("limitray.sock")
 }
 
 impl Config {
@@ -132,6 +132,11 @@ impl Config {
         let mut cfg: Config = std::fs::read(config_path())
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
+            .or_else(|| {
+                // This app was called codexbar-tray until v0.3.0.
+                let old = dirs::config_dir()?.join("codexbar-tray/config.json");
+                serde_json::from_slice(&std::fs::read(old).ok()?).ok()
+            })
             .or_else(|| {
                 // Settings from the earlier in-repo build of this app.
                 let old = dirs::config_dir()?.join("codexbar/linux-tray.json");

@@ -239,7 +239,7 @@ impl PopupApp {
             state,
             connected,
             pal,
-            view: if std::env::var("CODEXBAR_VIEW").as_deref() == Ok("settings") {
+            view: if std::env::var("LIMITRAY_VIEW").as_deref() == Ok("settings") {
                 View::Settings
             } else {
                 View::Usage
@@ -254,7 +254,7 @@ impl PopupApp {
             resized_at: Instant::now(),
             closing: false,
             frames: 0,
-            snapshot_to: std::env::var("CODEXBAR_SNAPSHOT_TO").ok(),
+            snapshot_to: std::env::var("LIMITRAY_SNAPSHOT_TO").ok(),
         }
     }
 
@@ -1318,7 +1318,7 @@ impl PopupApp {
                 ));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let quit = egui::Button::new(RichText::new("Quit CodexBar").color(pal.bad))
+                let quit = egui::Button::new(RichText::new("Quit Limitray").color(pal.bad))
                     .fill(pal.bad.gamma_multiply(0.1));
                 if ui.add(quit).clicked() {
                     ipc::send(&Request::Quit);
@@ -1344,7 +1344,7 @@ impl PopupApp {
 
 fn update_banner(ui: &mut Ui, pal: &Palette, target: UpdateTarget, update: &UpdateOffer) {
     let name = match target {
-        UpdateTarget::App => "CodexBar Tray",
+        UpdateTarget::App => "Limitray",
         UpdateTarget::Cli => "CodexBar CLI",
     };
     let tint = if update.error.is_some() {
@@ -1516,7 +1516,7 @@ impl eframe::App for PopupApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
             }
         }
-        // Debug aid: render one settled frame to a PNG and exit (CODEXBAR_SNAPSHOT_TO=/tmp/x.png).
+        // Debug aid: render one settled frame to a PNG and exit (LIMITRAY_SNAPSHOT_TO=/tmp/x.png).
         self.frames += 1;
         let inner_h = full.height();
         if self.frames >= 12
@@ -1546,7 +1546,7 @@ impl eframe::App for PopupApp {
         {
             ctx.request_repaint_after(Duration::from_millis(16));
         }
-        if std::env::var_os("CODEXBAR_DEBUG").is_some() {
+        if std::env::var_os("LIMITRAY_DEBUG").is_some() {
             eprintln!(
                 "frame {} focused={focused} inner={inner_h} want={}",
                 self.frames, self.last_height
@@ -1585,8 +1585,8 @@ fn x11_position((x, y): (i32, i32), height: f32) -> Option<egui::Pos2> {
 pub fn run(at: Option<(i32, i32)>) -> i32 {
     let desktop = theme::detect();
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("CodexBar")
-        .with_app_id("codexbar-tray-popup")
+        .with_title("Limitray")
+        .with_app_id("limitray-popup")
         .with_inner_size(vec2(WIDTH, 420.0))
         .with_resizable(true)
         .with_decorations(false)
@@ -1613,12 +1613,12 @@ pub fn run(at: Option<(i32, i32)>) -> i32 {
         ..Default::default()
     };
     let result = eframe::run_native(
-        "codexbar-tray-popup",
+        "limitray-popup",
         options,
         Box::new(move |cc| Ok(Box::new(PopupApp::new(cc, &desktop)))),
     );
     if let Err(e) = result {
-        eprintln!("codexbar-tray popup: {e}");
+        eprintln!("limitray popup: {e}");
         return 1;
     }
     0

@@ -13,21 +13,22 @@ mod theme;
 mod tray;
 mod update;
 
-const HELP: &str = "codexbar-tray — tray + popup for CodexBar (Claude-first)
+const HELP: &str =
+    "limitray — Claude (and other AI) usage limits in your tray, via the CodexBar CLI
 
 USAGE:
-  codexbar-tray install         Install app + CodexBar CLI + launcher + autostart, then start
+  limitray install         Install app + CodexBar CLI + launcher + autostart, then start
         [--no-autostart] [--no-start] [--update-cli]
-  codexbar-tray uninstall       Remove everything install added [--purge also drops settings]
-  codexbar-tray update          Update this app and the CLI it installed [--check only reports]
-  codexbar-tray update-cli      Download the latest CodexBar CLI release
-  codexbar-tray                 Start the tray; if it is already running, open the popup
-  codexbar-tray --show          Start the tray (if needed) and open the popup
-  codexbar-tray --background    Start the tray only, never open the popup
-  codexbar-tray --toggle        Toggle the popup of the running instance
-  codexbar-tray --refresh       Refresh now
-  codexbar-tray --status        Print the current state as JSON
-  codexbar-tray --quit          Stop the running instance
+  limitray uninstall       Remove everything install added [--purge also drops settings]
+  limitray update          Update this app and the CLI it installed [--check only reports]
+  limitray update-cli      Download the latest CodexBar CLI release
+  limitray                 Start the tray; if it is already running, open the popup
+  limitray --show          Start the tray (if needed) and open the popup
+  limitray --background    Start the tray only, never open the popup
+  limitray --toggle        Toggle the popup of the running instance
+  limitray --refresh       Refresh now
+  limitray --status        Print the current state as JSON
+  limitray --quit          Stop the running instance
 ";
 
 fn main() {
@@ -64,7 +65,7 @@ fn main() {
         print!("{HELP}");
         0
     } else if has("--version") || has("-V") {
-        println!("codexbar-tray {}", env!("CARGO_PKG_VERSION"));
+        println!("limitray {}", env!("CARGO_PKG_VERSION"));
         0
     } else if has("--quit") {
         client(ipc::Request::Quit)
@@ -79,7 +80,7 @@ fn main() {
                 0
             }
             None => {
-                eprintln!("codexbar-tray is not running");
+                eprintln!("limitray is not running");
                 1
             }
         }
@@ -105,7 +106,7 @@ fn client(req: ipc::Request) -> i32 {
     if ipc::send(&req) {
         0
     } else {
-        eprintln!("codexbar-tray is not running");
+        eprintln!("limitray is not running");
         1
     }
 }
