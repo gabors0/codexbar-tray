@@ -1091,7 +1091,7 @@ fn logo_at(ui: &mut Ui, id: &str, rect: Rect, tint: Color32) {
 // ---------- settings view ----------
 
 impl PopupApp {
-    fn settings_view(&mut self, ui: &mut Ui, cfg: &Config) {
+    fn settings_view(&mut self, ui: &mut Ui, snap: &Snapshot, cfg: &Config) {
         let pal = self.pal;
         let mut draft = self.draft.take().unwrap_or_else(|| cfg.clone());
         ui.horizontal(|ui| {
@@ -1312,6 +1312,16 @@ impl PopupApp {
                     crate::update::current()
                 )),
             );
+            ui.horizontal(|ui| {
+                let checking = snap.update_status.as_deref() == Some(crate::model::UPDATE_CHECKING);
+                let button = egui::Button::new("Check for updates now");
+                if ui.add_enabled(!checking, button).clicked() {
+                    ipc::send(&Request::CheckUpdates);
+                }
+                if let Some(status) = &snap.update_status {
+                    ui.label(RichText::new(status).size(11.5).color(pal.faint));
+                }
+            });
         });
         ui.add_space(8.0);
         ui.horizontal(|ui| {
@@ -1492,7 +1502,7 @@ impl eframe::App for PopupApp {
                         }
                         match self.view {
                             View::Usage => self.usage_view(ui, &snapshot, &config),
-                            View::Settings => self.settings_view(ui, &config),
+                            View::Settings => self.settings_view(ui, &snapshot, &config),
                         }
                     })
                     .content_size

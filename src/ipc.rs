@@ -24,6 +24,8 @@ pub enum Request {
     SetConfig {
         config: Config,
     },
+    /// Check GitHub for app and CLI updates now, even when daily checks are off.
+    CheckUpdates,
     /// Install the offered update (the app then restarts on it).
     InstallUpdate {
         target: UpdateTarget,

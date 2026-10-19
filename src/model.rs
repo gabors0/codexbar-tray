@@ -124,6 +124,9 @@ pub enum UpdateTarget {
     Cli,
 }
 
+/// `Snapshot::update_status` while a manual update check runs.
+pub const UPDATE_CHECKING: &str = "Checking for updates…";
+
 /// A newer release of the app or the CLI, and how installing it is going.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct UpdateOffer {
@@ -149,6 +152,9 @@ pub struct Snapshot {
     pub update: Option<UpdateOffer>,
     #[serde(default)]
     pub cli_update: Option<UpdateOffer>,
+    /// Outcome of the last manual update check, e.g. "Up to date · checked 14:02".
+    #[serde(default)]
+    pub update_status: Option<String>,
 }
 
 impl Snapshot {

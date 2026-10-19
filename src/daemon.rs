@@ -3,7 +3,9 @@
 use crate::config::{cache_path, socket_path, Config};
 use crate::fetch;
 use crate::ipc::{Request, State};
-use crate::model::{CostSummary, ProviderUsage, Snapshot, UpdateOffer, UpdateTarget};
+use crate::model::{
+    CostSummary, ProviderUsage, Snapshot, UpdateOffer, UpdateTarget, UPDATE_CHECKING,
+};
 use crate::tray::CodexTray;
 use crate::{format, theme};
 use chrono::Utc;
@@ -58,7 +60,11 @@ pub enum Cmd {
     Subscribe(UnixStream),
     Get(UnixStream),
     /// Result of a background update check: the newer version and its release notes, if any.
-    UpdateChecked(UpdateTarget, Option<(String, String)>),
+    /// The bool marks a manual check, which applies even when daily checks are off.
+    UpdateChecked(UpdateTarget, Option<(String, String)>, bool),
+    CheckUpdates,
+    /// Summary of a finished manual update check.
+    UpdateStatus(String),
     InstallUpdate(UpdateTarget),
     UpdateFailed(UpdateTarget, String),
     /// A new CodexBar CLI is in place; fetch with it.
@@ -88,6 +94,7 @@ fn load_cache() -> Snapshot {
             s.from_cache = true;
             s.update = None;
             s.cli_update = None;
+            s.update_status = None;
             s
         })
         .unwrap_or_default()
@@ -375,28 +382,61 @@ impl Daemon {
         }
     }
 
-    fn check_updates(&self) {
-        if !self.cfg.check_updates {
+    fn check_updates(&mut self, manual: bool) {
+        if manual {
+            if self.snap.update_status.as_deref() == Some(UPDATE_CHECKING) {
+                return;
+            }
+            self.snap.update_status = Some(UPDATE_CHECKING.into());
+            self.publish();
+        } else if !self.cfg.check_updates {
             return;
         }
         let (tx, cfg, app) = (self.tx.clone(), self.cfg.clone(), self.self_managed);
         // Offline or rate-limited: keep what we knew and try again next time.
         std::thread::spawn(move || {
+            let mut errors = Vec::new();
+            let mut found_any = false;
             if app {
-                if let Ok(release) = crate::update::check() {
-                    let found = release.map(|r| (r.version.clone(), r.notes_url()));
-                    let _ = tx.send(Cmd::UpdateChecked(UpdateTarget::App, found));
+                match crate::update::check() {
+                    Ok(release) => {
+                        let found = release.map(|r| (r.version.clone(), r.notes_url()));
+                        found_any |= found.is_some();
+                        let _ = tx.send(Cmd::UpdateChecked(UpdateTarget::App, found, manual));
+                    }
+                    Err(e) => errors.push(e),
                 }
             }
-            if let Ok(cli) = crate::update::check_cli(&cfg) {
-                let found = cli.map(|u| (u.latest, u.notes_url));
-                let _ = tx.send(Cmd::UpdateChecked(UpdateTarget::Cli, found));
+            match crate::update::check_cli(&cfg) {
+                Ok(cli) => {
+                    let found = cli.map(|u| (u.latest, u.notes_url));
+                    found_any |= found.is_some();
+                    let _ = tx.send(Cmd::UpdateChecked(UpdateTarget::Cli, found, manual));
+                }
+                Err(e) => errors.push(e),
+            }
+            if manual {
+                let status = if !errors.is_empty() {
+                    format!("Update check failed: {}", errors.join("; "))
+                } else if found_any {
+                    "Update available".into()
+                } else {
+                    format!("Up to date · checked {}", format::clock(Utc::now()))
+                };
+                let _ = tx.send(Cmd::UpdateStatus(status));
             }
         });
     }
 
-    fn update_checked(&mut self, target: UpdateTarget, found: Option<(String, String)>) {
-        if !self.cfg.check_updates || self.offer(target).as_ref().is_some_and(|u| u.installing) {
+    fn update_checked(
+        &mut self,
+        target: UpdateTarget,
+        found: Option<(String, String)>,
+        manual: bool,
+    ) {
+        if (!self.cfg.check_updates && !manual)
+            || self.offer(target).as_ref().is_some_and(|u| u.installing)
+        {
             return;
         }
         let offer = self.offer(target);
@@ -521,6 +561,7 @@ fn serve(listener: UnixListener, tx: Sender<Cmd>) {
                 Request::Toggle => Cmd::TogglePopup { token: None },
                 Request::Quit => Cmd::Quit,
                 Request::SetConfig { config } => Cmd::SetConfig(config),
+                Request::CheckUpdates => Cmd::CheckUpdates,
                 Request::InstallUpdate { target } => Cmd::InstallUpdate(target),
             };
             let _ = tx.send(cmd);
@@ -649,7 +690,17 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
             Ok(Cmd::Get(mut s)) => {
                 let _ = s.write_all(&d.state_line());
             }
-            Ok(Cmd::UpdateChecked(target, found)) => d.update_checked(target, found),
+            Ok(Cmd::UpdateChecked(target, found, manual)) => {
+                d.update_checked(target, found, manual)
+            }
+            Ok(Cmd::CheckUpdates) => {
+                d.check_updates(true);
+                d.next_update_check = Instant::now() + UPDATE_CHECK_EVERY;
+            }
+            Ok(Cmd::UpdateStatus(s)) => {
+                d.snap.update_status = Some(s);
+                d.publish();
+            }
             Ok(Cmd::InstallUpdate(target)) => d.install_update(target),
             Ok(Cmd::UpdateFailed(target, e)) => d.update_failed(target, e),
             Ok(Cmd::CliUpdated) => {
@@ -673,7 +724,7 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
                     next_tick = now + Duration::from_secs(60);
                 }
                 if now >= d.next_update_check {
-                    d.check_updates();
+                    d.check_updates(false);
                     d.next_update_check = now + UPDATE_CHECK_EVERY;
                 }
             }

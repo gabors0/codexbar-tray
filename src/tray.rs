@@ -2,7 +2,7 @@ use crate::config::{Config, QuotaDisplay, TrayStyle, TrayWindow};
 use crate::daemon::Cmd;
 use crate::format;
 use crate::icon::{self, IconSpec, Level};
-use crate::model::{ProviderUsage, Snapshot, UpdateTarget, Window};
+use crate::model::{ProviderUsage, Snapshot, UpdateTarget, Window, UPDATE_CHECKING};
 use ab_glyph::FontVec;
 use ksni::menu::{CheckmarkItem, RadioGroup, RadioItem, StandardItem, SubMenu};
 use ksni::{MenuItem, Status, ToolTip};
@@ -616,6 +616,22 @@ impl ksni::Tray for CodexTray {
                 .into(),
             );
         }
+        let checking = self.snapshot.update_status.as_deref() == Some(UPDATE_CHECKING);
+        items.push(
+            StandardItem {
+                label: if checking {
+                    UPDATE_CHECKING
+                } else {
+                    "Check for updates"
+                }
+                .into(),
+                icon_name: "system-software-update".into(),
+                enabled: !checking,
+                activate: Box::new(|t: &mut Self| t.send(Cmd::CheckUpdates)),
+                ..Default::default()
+            }
+            .into(),
+        );
         items.push(
             StandardItem {
                 label: "Quit".into(),
