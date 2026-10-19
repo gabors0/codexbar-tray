@@ -2,6 +2,11 @@
 
 All notable changes to Limitray. Each release's section becomes its GitHub release description, so add one here (under the version in `Cargo.toml`) before tagging; the release workflow fails without it.
 
+## [0.4.2] - 2026-10-19
+
+### Fixed
+- Black provider logos (OpenRouter, OpenCode, Vercel, Exa and others) were invisible on dark backgrounds in the window. Monochrome logos are now rendered as light templates so they take the provider's colour, and multicolour logos keep their original colours.
+
 ## [0.4.1] - 2026-10-19
 
 ### Added
@@ -47,6 +52,7 @@ All notable changes to Limitray. Each release's section becomes its GitHub relea
 
 - First release, as codexbar-tray: a Linux tray app for the CodexBar CLI.
 
+[0.4.2]: https://github.com/gabors0/limitray/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/gabors0/limitray/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/gabors0/limitray/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/gabors0/limitray/compare/v0.2.0...v0.3.0
