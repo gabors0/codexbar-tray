@@ -45,12 +45,12 @@ is kept.
 
 | Action | Tray icon |
 |---|---|
-| Left click | open/close the popup |
+| Left click | open/close the window |
 | Middle click | refresh now |
 | Scroll | switch session ↔ weekly (and provider) |
 | Right click | live numbers, icon style, providers, notifications |
 
-Popup keys: `Ctrl+R` refresh, `Ctrl+,` settings, `Esc` close.
+Window keys: `Ctrl+R` refresh, `Ctrl+,` settings, `Esc` close.
 
 Commands: `limitray --status` (JSON), `--refresh`, `--toggle` (bind it to a hotkey),
 `--quit`, `update`, `update-cli`, `uninstall [--purge]`.

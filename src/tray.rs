@@ -257,16 +257,13 @@ impl ksni::Tray for CodexTray {
         }
     }
 
-    fn activate(&mut self, x: i32, y: i32) {
+    fn activate(&mut self, _x: i32, _y: i32) {
         let token = self
             .activation_token
             .take()
             .filter(|(_, at)| at.elapsed().as_secs() < 10)
             .map(|(t, _)| t);
-        self.send(Cmd::TogglePopup {
-            token,
-            pos: Some((x, y)),
-        });
+        self.send(Cmd::TogglePopup { token });
     }
 
     fn provide_xdg_activation_token(&mut self, token: String) {
@@ -360,7 +357,7 @@ impl ksni::Tray for CodexTray {
             StandardItem {
                 label: "Open Limitray".into(),
                 icon_name: "view-statistics".into(),
-                activate: Box::new(|t: &mut Self| t.send(Cmd::ShowPopup { token: None })),
+                activate: Box::new(|t: &mut Self| t.send(Cmd::TogglePopup { token: None })),
                 ..Default::default()
             }
             .into(),
