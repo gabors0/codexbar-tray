@@ -1064,6 +1064,11 @@ fn provider_logo(ui: &mut Ui, id: &str, size: f32, tint: Color32) {
 fn logo_at(ui: &mut Ui, id: &str, rect: Rect, tint: Color32) {
     match crate::icons::provider_svg(id) {
         Some(bytes) => {
+            let tint = if crate::icons::provider_colored(id) && tint == brand(id) {
+                Color32::WHITE
+            } else {
+                tint
+            };
             egui::Image::from_bytes(format!("bytes://provider-{id}.svg"), bytes)
                 .tint(tint)
                 .paint_at(ui, rect);
