@@ -47,6 +47,10 @@ jobs:
             echo "::error::Tag $TAG already exists; push a new version instead of re-releasing"
             exit 1
           fi
+          if ! grep -q "^## \[${TAG#v}\]" CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::No '## [${TAG#v}]' section in CHANGELOG.md; it becomes the release description"
+            exit 1
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
   build:
@@ -79,6 +83,29 @@ jobs:
     needs: [version, build]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - name: Release notes from CHANGELOG.md
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          # The version's section, without its heading, up to the next version or link list.
+          awk -v head="## [${TAG#v}]" '
+            index($0, head) == 1 { on = 1; next }
+            on && (/^## \[/ || /^\[[^]]+\]: /) { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          link=$(grep -m1 "^\[${TAG#v}\]: " CHANGELOG.md | sed 's/^[^ ]* //')
+          {
+            [ -n "$link" ] && printf '**Full changelog:** %s\n\n' "$link"
+            echo '---'
+            echo
+            echo 'Install or update:'
+            echo '```sh'
+            echo "curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh"
+            echo '```'
+            echo 'Or download `limitray-<arch>`, `chmod +x` it and run `./limitray-<arch> install`.'
+          } >> notes.md
+          cat notes.md
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -90,9 +117,4 @@ jobs:
           target_commitish: ${{ github.sha }}
           files: dist/*
           make_latest: legacy
-          body: |
-            Install or update:
-            ```sh
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh
-            ```
-            Or download `limitray-<arch>`, `chmod +x` it and run `./limitray-<arch> install`.
+          body_path: notes.md
