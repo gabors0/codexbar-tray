@@ -24,8 +24,6 @@ pub enum Request {
     SetConfig {
         config: Config,
     },
-    /// Sent by the popup right before it closes because it lost focus.
-    PopupClosing,
     /// Install the offered update (the app then restarts on it).
     InstallUpdate {
         target: UpdateTarget,

@@ -51,13 +51,10 @@ pub enum Cmd {
     SetConfig(Config),
     TogglePopup {
         token: Option<String>,
-        /// Where the tray icon was clicked; `None` (e.g. `--toggle` from a hotkey) centers it.
-        pos: Option<(i32, i32)>,
     },
     ShowPopup {
         token: Option<String>,
     },
-    PopupClosing,
     Subscribe(UnixStream),
     Get(UnixStream),
     /// Result of a background update check: the newer version and its release notes, if any.
@@ -204,7 +201,6 @@ struct Daemon {
     tray: Option<ksni::blocking::Handle<CodexTray>>,
     subscribers: Vec<UnixStream>,
     popup: Option<Child>,
-    popup_closed_at: Option<Instant>,
     last_values: HashMap<String, (f64, Option<chrono::DateTime<Utc>>)>,
     generation: u64,
     last_cost: Option<Instant>,
@@ -468,7 +464,7 @@ impl Daemon {
         }
     }
 
-    fn show_popup(&mut self, token: Option<String>, pos: Option<(i32, i32)>) {
+    fn show_popup(&mut self, token: Option<String>) {
         if self.popup_alive() {
             return;
         }
@@ -477,20 +473,16 @@ impl Daemon {
         };
         let mut cmd = Command::new(exe);
         cmd.arg("popup").stdin(Stdio::null());
-        if let Some((x, y)) = pos {
-            cmd.arg("--at").arg(format!("{x},{y}"));
-        }
         if let Some(t) = token {
             cmd.env("XDG_ACTIVATION_TOKEN", t);
         }
-        crate::kwin::place_popup(pos.is_some());
         self.popup = cmd.spawn().ok();
         if self.snap.age_secs().is_none_or(|a| a > 60) {
             self.refresh(false);
         }
     }
 
-    fn toggle_popup(&mut self, token: Option<String>, pos: Option<(i32, i32)>) {
+    fn toggle_popup(&mut self, token: Option<String>) {
         if self.popup_alive() {
             if let Some(mut c) = self.popup.take() {
                 let _ = c.kill();
@@ -498,16 +490,7 @@ impl Daemon {
             }
             return;
         }
-        // Clicking the icon steals focus from an open popup, which closes itself on blur just
-        // before this click arrives. Treat that as "close", not "reopen".
-        if self
-            .popup_closed_at
-            .is_some_and(|t| t.elapsed() < Duration::from_millis(500))
-        {
-            self.popup_closed_at = None;
-            return;
-        }
-        self.show_popup(token, pos);
+        self.show_popup(token);
     }
 }
 
@@ -535,17 +518,30 @@ fn serve(listener: UnixListener, tx: Sender<Cmd>) {
                 Request::Show => Cmd::ShowPopup {
                     token: std::env::var("XDG_ACTIVATION_TOKEN").ok(),
                 },
-                Request::Toggle => Cmd::TogglePopup {
-                    token: None,
-                    pos: None,
-                },
+                Request::Toggle => Cmd::TogglePopup { token: None },
                 Request::Quit => Cmd::Quit,
                 Request::SetConfig { config } => Cmd::SetConfig(config),
-                Request::PopupClosing => Cmd::PopupClosing,
                 Request::InstallUpdate { target } => Cmd::InstallUpdate(target),
             };
             let _ = tx.send(cmd);
         });
+    }
+}
+
+/// Older releases placed the popup with a KWin script that stays loaded for the whole KWin
+/// session. Left behind, it keeps snapping the window to the tray and undoes every drag.
+fn unload_legacy_kwin_scripts() {
+    let Ok(conn) = zbus::blocking::Connection::session() else {
+        return;
+    };
+    for name in ["limitray-popup-placement", "codexbar-popup-placement"] {
+        let _ = conn.call_method(
+            Some("org.kde.KWin"),
+            "/Scripting",
+            Some("org.kde.kwin.Scripting"),
+            "unloadScript",
+            &(name,),
+        );
     }
 }
 
@@ -570,6 +566,7 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
     };
     use std::os::unix::fs::PermissionsExt;
     let _ = std::fs::set_permissions(&sock, std::fs::Permissions::from_mode(0o600));
+    std::thread::spawn(unload_legacy_kwin_scripts);
 
     let cfg = Config::load();
     let snap = load_cache();
@@ -604,7 +601,6 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
         tray,
         subscribers: Vec::new(),
         popup: None,
-        popup_closed_at: None,
         last_values: HashMap::new(),
         generation: 0,
         last_cost: None,
@@ -615,7 +611,7 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
     };
     d.refresh(false);
     if show_on_start {
-        d.show_popup(None, None);
+        d.show_popup(None);
     }
     // Countdown text in the tooltip/menu is derived on demand; nudge the tray each minute anyway
     // so the stale indicator and status stay current.
@@ -643,9 +639,8 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
                 d.set_config(c);
                 next_poll = Instant::now() + Duration::from_secs(d.cfg.refresh_secs);
             }
-            Ok(Cmd::TogglePopup { token, pos }) => d.toggle_popup(token, pos),
-            Ok(Cmd::ShowPopup { token }) => d.show_popup(token, None),
-            Ok(Cmd::PopupClosing) => d.popup_closed_at = Some(Instant::now()),
+            Ok(Cmd::TogglePopup { token }) => d.toggle_popup(token),
+            Ok(Cmd::ShowPopup { token }) => d.show_popup(token),
             Ok(Cmd::Subscribe(mut s)) => {
                 if s.write_all(&d.state_line()).is_ok() {
                     d.subscribers.push(s);

@@ -1,5 +1,6 @@
-//! The popover window, launched by the daemon on tray click. Renders from the daemon's pushed
-//! state (or the disk cache), so it is populated on the very first frame.
+//! The app window, launched by the daemon from the tray. A regular decorated window placed by
+//! the compositor; closing it leaves the tray running. Renders from the daemon's pushed state
+//! (or the disk cache), so it is populated on the very first frame.
 
 use crate::config::{Config, QuotaDisplay, TrayStyle, TrayWindow};
 use crate::format;
@@ -144,8 +145,6 @@ pub struct PopupApp {
     draft: Option<Config>,
     new_provider: String,
     thresholds_text: String,
-    had_focus: bool,
-    opened: Instant,
     last_height: f32,
     resized_at: Instant,
     closing: bool,
@@ -248,8 +247,6 @@ impl PopupApp {
             draft: None,
             new_provider: String::new(),
             thresholds_text: String::new(),
-            had_focus: false,
-            opened: Instant::now(),
             last_height: 0.0,
             resized_at: Instant::now(),
             closing: false,
@@ -258,14 +255,11 @@ impl PopupApp {
         }
     }
 
-    fn close(&mut self, ctx: &egui::Context, blur: bool) {
+    fn close(&mut self, ctx: &egui::Context) {
         if self.closing {
             return;
         }
         self.closing = true;
-        if blur {
-            ipc::send(&Request::PopupClosing);
-        }
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 }
@@ -325,6 +319,13 @@ fn paint_sliders(p: &egui::Painter, r: Rect, color: Color32) {
         );
         p.circle_filled(pos2(r.left() + r.width() * knob, y), 2.4, color);
     }
+}
+
+fn paint_close(p: &egui::Painter, r: Rect, color: Color32) {
+    let r = r.shrink(1.5);
+    let s = Stroke::new(1.6, color);
+    p.line_segment([r.left_top(), r.right_bottom()], s);
+    p.line_segment([r.right_top(), r.left_bottom()], s);
 }
 
 fn paint_back(p: &egui::Painter, r: Rect, color: Color32) {
@@ -472,6 +473,10 @@ impl PopupApp {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
+                if icon_button(ui, &pal, "Close (Esc)", paint_close).clicked() {
+                    let ctx = ui.ctx().clone();
+                    self.close(&ctx);
+                }
                 if icon_button(ui, &pal, "Settings", paint_sliders).clicked() {
                     self.view = View::Settings;
                     self.draft = Some(cfg.clone());
@@ -1094,6 +1099,12 @@ impl PopupApp {
                 self.view = View::Usage;
             }
             ui.label(RichText::new("Settings").size(17.0).family(semibold()));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if icon_button(ui, &pal, "Close", paint_close).clicked() {
+                    let ctx = ui.ctx().clone();
+                    self.close(&ctx);
+                }
+            });
         });
         ui.add_space(4.0);
         let mut text_focus = false;
@@ -1211,13 +1222,6 @@ impl PopupApp {
                 &pal,
                 &mut draft.show_status,
                 "Show service status",
-                None,
-            );
-            toggle(
-                ui,
-                &pal,
-                &mut draft.close_on_blur,
-                "Close popup when it loses focus",
                 None,
             );
         });
@@ -1404,21 +1408,11 @@ impl eframe::App for PopupApp {
             return;
         };
 
-        let focused = ctx.input(|i| i.focused);
-        if focused {
-            self.had_focus = true;
-        } else if self.had_focus
-            && config.close_on_blur
-            && self.snapshot_to.is_none()
-            && self.opened.elapsed() > Duration::from_millis(300)
-        {
-            self.close(&ctx, true);
-        }
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             if self.view == View::Settings {
                 self.view = View::Usage;
             } else {
-                self.close(&ctx, false);
+                self.close(&ctx);
             }
         }
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::R)) {
@@ -1428,18 +1422,21 @@ impl eframe::App for PopupApp {
             self.view = View::Settings;
         }
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Q)) {
-            self.close(&ctx, false);
+            self.close(&ctx);
         }
 
         let pal = self.pal;
         let full = ui.max_rect();
         ui.painter().rect_filled(full, CornerRadius::ZERO, pal.bg);
-        ui.painter().rect_stroke(
-            full,
-            CornerRadius::ZERO,
-            Stroke::new(1.0, pal.border),
-            StrokeKind::Inside,
-        );
+        // No title bar: dragging any empty part of the window moves it. Drag-only sense starts on
+        // press, with no threshold. egui hands a drag on a click-only widget (a button) to the drag
+        // widget behind it, so only move the window when nothing clickable is under the pointer.
+        let bg = ui.interact(full, ui.scope_id().with("window-drag"), Sense::drag());
+        if bg.drag_started_by(egui::PointerButton::Primary)
+            && ctx.viewport(|v| v.hits.click.is_none())
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+        }
 
         let content = Frame::new()
             .inner_margin(Margin::symmetric(16, 14))
@@ -1501,6 +1498,12 @@ impl eframe::App for PopupApp {
                     .content_size
                     .y
             });
+        ui.painter().rect_stroke(
+            full,
+            CornerRadius::ZERO,
+            Stroke::new(1.0, pal.border),
+            StrokeKind::Inside,
+        );
         let height = (content.inner + 28.0).clamp(120.0, MAX_HEIGHT).ceil();
         let mismatch = (full.height() - height).abs() > 2.0 && self.frames % 10 == 5;
         if (height - self.last_height).abs() > 1.0 || mismatch {
@@ -1511,10 +1514,6 @@ impl eframe::App for PopupApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(size));
             ctx.send_viewport_cmd(egui::ViewportCommand::MaxInnerSize(size));
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
-            // X11 keeps the top-left corner on resize; re-pin so a bottom-panel popup stays put.
-            if let Some(pos) = ANCHOR.get().and_then(|&at| x11_position(at, height)) {
-                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
-            }
         }
         // Debug aid: render one settled frame to a PNG and exit (LIMITRAY_SNAPSHOT_TO=/tmp/x.png).
         self.frames += 1;
@@ -1548,7 +1547,7 @@ impl eframe::App for PopupApp {
         }
         if std::env::var_os("LIMITRAY_DEBUG").is_some() {
             eprintln!(
-                "frame {} focused={focused} inner={inner_h} want={}",
+                "frame {} inner={inner_h} want={}",
                 self.frames, self.last_height
             );
         }
@@ -1564,34 +1563,14 @@ impl eframe::App for PopupApp {
     }
 }
 
-/// Tray click position the popup was opened from, fixed for the popup's lifetime.
-static ANCHOR: std::sync::OnceLock<(i32, i32)> = std::sync::OnceLock::new();
-
-/// Client-side placement next to the tray click. Only X11 honours it; on KDE Wayland the
-/// daemon places the popup via a KWin script (kwin.rs).
-fn x11_position((x, y): (i32, i32), height: f32) -> Option<egui::Pos2> {
-    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
-        return None;
-    }
-    let px = (x as f32 - WIDTH / 2.0).max(8.0);
-    let py = if y > 400 {
-        (y as f32 - 12.0 - height - 28.0).max(8.0)
-    } else {
-        y as f32 + 12.0
-    };
-    Some(pos2(px, py))
-}
-
-pub fn run(at: Option<(i32, i32)>) -> i32 {
+pub fn run() -> i32 {
     let desktop = theme::detect();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Limitray")
         .with_app_id("limitray-popup")
         .with_inner_size(vec2(WIDTH, 420.0))
         .with_resizable(true)
-        .with_decorations(false)
-        .with_taskbar(false)
-        .with_window_level(egui::WindowLevel::AlwaysOnTop);
+        .with_decorations(false);
     if let Some(rgba) = crate::icon::render_rgba_logo("claude", brand_color("claude"), 64) {
         viewport = viewport.with_icon(egui::IconData {
             rgba,
@@ -1599,16 +1578,9 @@ pub fn run(at: Option<(i32, i32)>) -> i32 {
             height: 64,
         });
     }
-    // Only X11 honours client positioning; on KDE Wayland the daemon places it via a KWin script (kwin.rs).
-    if let Some(at) = at {
-        let _ = ANCHOR.set(at);
-        if let Some(pos) = x11_position(at, 420.0) {
-            viewport = viewport.with_position(pos);
-        }
-    }
     let options = eframe::NativeOptions {
         viewport,
-        centered: at.is_none(),
+        centered: true,
         persist_window: false,
         ..Default::default()
     };

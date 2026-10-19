@@ -76,7 +76,6 @@ pub struct Config {
     /// Used-percent thresholds that trigger a notification when crossed upwards.
     pub notify_thresholds: Vec<u8>,
     pub notify_reset: bool,
-    pub close_on_blur: bool,
     /// Source passed to the CLI. "auto" tries OAuth first for Claude (fast), then falls back.
     pub source: String,
     /// Ask GitHub once a day whether a newer limitray release exists.
@@ -98,7 +97,6 @@ impl Default for Config {
             notifications: true,
             notify_thresholds: vec![80, 95],
             notify_reset: true,
-            close_on_blur: true,
             source: "auto".into(),
             check_updates: true,
         }

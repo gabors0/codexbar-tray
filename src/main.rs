@@ -5,7 +5,6 @@ mod format;
 mod icon;
 mod icons;
 mod ipc;
-mod kwin;
 mod model;
 mod popup;
 mod setup;
@@ -35,15 +34,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let has = |f: &str| args.iter().any(|a| a == f);
     let code = if args.first().map(String::as_str) == Some("popup") {
-        let at = args
-            .iter()
-            .position(|a| a == "--at")
-            .and_then(|i| args.get(i + 1))
-            .and_then(|v| {
-                let (x, y) = v.split_once(',')?;
-                Some((x.parse().ok()?, y.parse().ok()?))
-            });
-        popup::run(at)
+        popup::run()
     } else if args.first().map(String::as_str) == Some("install") {
         setup::install(&args)
     } else if args.first().map(String::as_str) == Some("uninstall") {
