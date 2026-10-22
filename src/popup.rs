@@ -4,6 +4,7 @@
 
 use crate::config::{Config, QuotaDisplay, TrayStyle, TrayWindow};
 use crate::format;
+use crate::history::{self, Series};
 use crate::icon::brand_color;
 use crate::ipc::{self, Request, State};
 use crate::model::{
@@ -13,7 +14,7 @@ use crate::theme::{self, Rgb};
 use chrono::{Duration as ChronoDuration, Local};
 use eframe::egui::{
     self, pos2, vec2, Align, Align2, Color32, CornerRadius, FontData, FontDefinitions, FontFamily,
-    FontId, Frame, Layout, Margin, Rect, RichText, Sense, Stroke, StrokeKind, Ui,
+    FontId, Frame, Layout, Margin, Pos2, Rect, RichText, Sense, Shape, Stroke, StrokeKind, Ui,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -139,6 +140,7 @@ enum View {
 pub struct PopupApp {
     state: Arc<Mutex<Option<State>>>,
     connected: Arc<AtomicBool>,
+    history: Series,
     pal: Palette,
     view: View,
     selected: String,
@@ -209,9 +211,11 @@ impl PopupApp {
                 .ok()
                 .and_then(|b| serde_json::from_slice::<Snapshot>(&b).ok())
                 .unwrap_or_default();
+            let history = history::History::load().for_snapshot(&snapshot);
             *state.lock().unwrap() = Some(State {
                 snapshot,
                 config: Config::load(),
+                history,
             });
         }
         {
@@ -237,6 +241,7 @@ impl PopupApp {
         Self {
             state,
             connected,
+            history: Series::new(),
             pal,
             view: if std::env::var("LIMITRAY_VIEW").as_deref() == Ok("settings") {
                 View::Settings
@@ -449,6 +454,87 @@ fn pace_color(pal: &Palette, w: &Window) -> Color32 {
         Some(d) if d >= 15.0 => pal.bad,
         Some(d) if d >= 5.0 => pal.warn,
         _ => pal.muted,
+    }
+}
+
+/// Usage across the window so far: the x axis spans the whole window, the dotted diagonal is an
+/// even pace, and a dashed line extends the recent rate when it reaches the limit before the reset.
+fn sparkline(
+    ui: &mut Ui,
+    pal: &Palette,
+    cfg: &Config,
+    w: &Window,
+    points: &[(i64, f32)],
+    accent: Color32,
+) {
+    let Some((start, end)) = history::bounds(w) else {
+        return;
+    };
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::hover());
+    let painter = ui.painter_at(rect.expand(3.0));
+    let x = |t: i64| {
+        rect.left()
+            + rect.width() * ((t - start) as f32 / (end - start).max(1) as f32).clamp(0.0, 1.0)
+    };
+    let y = |used: f64| {
+        rect.bottom() - rect.height() * (cfg.display_value(used) / 100.0).clamp(0.0, 1.0) as f32
+    };
+    painter.extend(Shape::dashed_line(
+        &[pos2(rect.left(), y(0.0)), pos2(rect.right(), y(100.0))],
+        Stroke::new(1.0, pal.faint),
+        2.0,
+        3.0,
+    ));
+    let line: Vec<Pos2> = points
+        .iter()
+        .map(|&(t, u)| pos2(x(t), y(u as f64)))
+        .collect();
+    let fill = accent.gamma_multiply(0.18);
+    let mut mesh = egui::Mesh::default();
+    for pair in line.windows(2) {
+        let i = mesh.vertices.len() as u32;
+        mesh.colored_vertex(pair[0], fill);
+        mesh.colored_vertex(pos2(pair[0].x, rect.bottom()), fill);
+        mesh.colored_vertex(pair[1], fill);
+        mesh.colored_vertex(pos2(pair[1].x, rect.bottom()), fill);
+        mesh.add_triangle(i, i + 1, i + 2);
+        mesh.add_triangle(i + 1, i + 3, i + 2);
+    }
+    painter.add(mesh);
+    painter.add(Shape::line(line.clone(), Stroke::new(1.5, accent)));
+    let Some(&last) = line.last() else { return };
+    if let Some(at) = history::projected_full(points, w) {
+        painter.extend(Shape::dashed_line(
+            &[last, pos2(x(at.timestamp()), y(100.0))],
+            Stroke::new(1.2, pal.warn),
+            3.0,
+            2.0,
+        ));
+    }
+    painter.circle_filled(last, 2.5, accent);
+    let Some(hover) = resp.hover_pos() else {
+        return;
+    };
+    let Some(i) = (0..line.len()).min_by(|&a, &b| {
+        (line[a].x - hover.x)
+            .abs()
+            .total_cmp(&(line[b].x - hover.x).abs())
+    }) else {
+        return;
+    };
+    painter.line_segment(
+        [pos2(line[i].x, rect.top()), pos2(line[i].x, rect.bottom())],
+        Stroke::new(1.0, pal.muted),
+    );
+    painter.circle_filled(line[i], 3.0, accent);
+    let (t, u) = points[i];
+    if let Some(at) = chrono::DateTime::from_timestamp(t, 0) {
+        resp.on_hover_text(format!(
+            "{} · {:.0}% {}",
+            format::clock(at),
+            cfg.display_value(u as f64),
+            cfg.display_suffix()
+        ));
     }
 }
 
@@ -701,6 +787,20 @@ impl PopupApp {
                     cfg.display_value(expected),
                     cfg.display_suffix()
                 ));
+            }
+            if let Some(points) = self.history.get(&history::key(&p.id, w)) {
+                ui.add_space(6.0);
+                sparkline(ui, &pal, cfg, w, points, accent);
+                if let Some(at) = history::projected_full(points, w) {
+                    ui.label(
+                        RichText::new(format!(
+                            "At the recent rate, the limit is hit around {}",
+                            format::clock(at)
+                        ))
+                        .size(12.0)
+                        .color(pal.warn),
+                    );
+                }
             }
             if let Some(pace) = &w.pace {
                 let parts: Vec<&str> = pace
@@ -1419,9 +1519,15 @@ fn section(ui: &mut Ui, pal: &Palette, title: &str) {
 impl eframe::App for PopupApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        let Some(State { snapshot, config }) = self.state.lock().unwrap().clone() else {
+        let Some(State {
+            snapshot,
+            config,
+            history,
+        }) = self.state.lock().unwrap().clone()
+        else {
             return;
         };
+        self.history = history;
 
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             if self.view == View::Settings {

@@ -1,0 +1,40 @@
+# Maintainer: gabors0 <https://github.com/gabors0>
+# Update with packaging/aur/bump.sh <version> after the GitHub release is out.
+
+pkgname=limitray-bin
+pkgver=0.4.2
+pkgrel=1
+pkgdesc='Claude, Codex and other AI usage limits, pace and spend in the tray (via the CodexBar CLI)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/gabors0/limitray'
+license=('MIT')
+depends=('glibc' 'libgcc' 'libxkbcommon' 'hicolor-icon-theme')
+optdepends=('wayland: Wayland window'
+            'libglvnd: OpenGL rendering'
+            'libx11: X11 window'
+            'libxcursor: X11 window'
+            'libxi: X11 window'
+            'libxrandr: X11 window'
+            'fontconfig: use the desktop UI font'
+            'xdg-utils: open links from the window'
+            'curl: download the CodexBar CLI on first start')
+provides=('limitray')
+conflicts=('limitray')
+options=('!strip' '!debug')
+source=("limitray.desktop::$url/raw/v$pkgver/packaging/limitray.desktop"
+        "limitray.png::$url/raw/v$pkgver/packaging/limitray.png"
+        "LICENSE::$url/raw/v$pkgver/LICENSE")
+source_x86_64=("limitray-$pkgver-x86_64::$url/releases/download/v$pkgver/limitray-x86_64")
+source_aarch64=("limitray-$pkgver-aarch64::$url/releases/download/v$pkgver/limitray-aarch64")
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP')
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+package() {
+  install -Dm755 "limitray-$pkgver-$CARCH" "$pkgdir/usr/bin/limitray"
+  install -Dm644 limitray.desktop "$pkgdir/usr/share/applications/limitray.desktop"
+  install -Dm644 limitray.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/limitray.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

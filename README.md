@@ -2,6 +2,8 @@
 
 Your Claude (and Codex, Gemini, …) usage limits, pace and local spend in the Linux tray.
 
+<p align="center"><img src="docs/screenshot.png" alt="The Limitray window: session and weekly usage with pace, usage history and local spend" width="380"></p>
+
 Limitray is an unofficial tray app built on the [CodexBar](https://github.com/steipete/CodexBar)
 CLI, which does the provider fetching. It is separate from CodexBar's own Qt desktop app.
 Formerly called `codexbar-tray`.
@@ -53,7 +55,36 @@ is kept.
 Window keys: `Ctrl+R` refresh, `Ctrl+,` settings, `Esc` close.
 
 Commands: `limitray --status` (JSON), `--refresh`, `--toggle` (bind it to a hotkey),
-`--quit`, `update`, `update-cli`, `uninstall [--purge]`.
+`--quit`, `waybar`, `update`, `update-cli`, `uninstall [--purge]`.
+
+Each window card shows its usage so far against an even pace. When the recent rate would use up
+the limit before the reset, the card says around when.
+
+### Waybar
+
+`limitray waybar` keeps printing one JSON line per change for a
+[custom module](https://github.com/Alexays/Waybar/wiki/Module:-Custom), using the provider and
+window the tray icon tracks. It starts the background service if it isn't running yet.
+
+```jsonc
+"custom/limitray": {
+  "exec": "limitray waybar",
+  "return-type": "json",
+  "format": "AI {}",
+  "on-click": "limitray --toggle",
+  "on-click-middle": "limitray --refresh"
+}
+```
+
+```css
+#custom-limitray.warning { color: #e5a50a; }
+#custom-limitray.critical { color: #e01b24; }
+#custom-limitray.stale, #custom-limitray.offline { opacity: 0.5; }
+```
+
+The line also carries `percentage` (for `format-icons`) and `alt` (the provider id). Classes are
+`normal`, `warning` and `critical` (your notification thresholds), plus `stale`, `error`,
+`loading` and `offline`.
 
 ## Updates
 
@@ -72,6 +103,7 @@ Settings → Advanced (`"check_updates": false`).
 
 - Settings: `~/.config/limitray/config.json`
 - Cache (instant first paint): `~/.cache/limitray/snapshot.json`
+- Usage history (last 8 days): `~/.cache/limitray/history.jsonl`
 
 ## Build from source
 

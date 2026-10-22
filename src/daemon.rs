@@ -2,6 +2,7 @@
 
 use crate::config::{cache_path, socket_path, Config};
 use crate::fetch;
+use crate::history::History;
 use crate::ipc::{Request, State};
 use crate::model::{
     CostSummary, ProviderUsage, Snapshot, UpdateOffer, UpdateTarget, UPDATE_CHECKING,
@@ -209,6 +210,7 @@ struct Daemon {
     subscribers: Vec<UnixStream>,
     popup: Option<Child>,
     last_values: HashMap<String, (f64, Option<chrono::DateTime<Utc>>)>,
+    history: History,
     generation: u64,
     last_cost: Option<Instant>,
     live_fetches: u32,
@@ -222,6 +224,7 @@ impl Daemon {
         let mut line = serde_json::to_vec(&State {
             snapshot: self.snap.clone(),
             config: self.cfg.clone(),
+            history: self.history.for_snapshot(&self.snap),
         })
         .unwrap();
         line.push(b'\n');
@@ -309,6 +312,7 @@ impl Daemon {
             notifications(&self.cfg, &self.last_values, &merged);
         }
         self.live_fetches += 1;
+        self.history.record(&merged, Utc::now());
         for p in merged.iter().filter(|p| p.error.is_none()) {
             for w in &p.windows {
                 self.last_values
@@ -643,6 +647,7 @@ pub fn run(show_if_running: bool, show_on_start: bool) -> i32 {
         subscribers: Vec::new(),
         popup: None,
         last_values: HashMap::new(),
+        history: History::load(),
         generation: 0,
         last_cost: None,
         live_fetches: 0,

@@ -2,6 +2,7 @@ mod config;
 mod daemon;
 mod fetch;
 mod format;
+mod history;
 mod icon;
 mod icons;
 mod ipc;
@@ -11,6 +12,7 @@ mod setup;
 mod theme;
 mod tray;
 mod update;
+mod waybar;
 
 const HELP: &str =
     "limitray — Claude (and other AI) usage limits in your tray, via the CodexBar CLI
@@ -28,6 +30,7 @@ USAGE:
   limitray --refresh       Refresh now
   limitray --status        Print the current state as JSON
   limitray --quit          Stop the running instance
+  limitray waybar          Stream JSON for a Waybar custom module [--once] [--no-start]
 ";
 
 fn main() {
@@ -39,6 +42,8 @@ fn main() {
         setup::install(&args)
     } else if args.first().map(String::as_str) == Some("uninstall") {
         setup::uninstall(&args)
+    } else if args.first().map(String::as_str) == Some("waybar") {
+        waybar::run(&args)
     } else if args.first().map(String::as_str) == Some("update") {
         update::run_cli(&args)
     } else if args.first().map(String::as_str) == Some("update-cli") {

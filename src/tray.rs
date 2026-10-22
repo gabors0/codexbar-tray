@@ -76,11 +76,7 @@ impl CodexTray {
     }
 
     fn tracked<'a>(&self, p: &'a ProviderUsage) -> Option<&'a Window> {
-        match self.config.tray_window {
-            TrayWindow::Session => p.session(),
-            TrayWindow::Weekly => p.weekly().or_else(|| p.session()),
-            TrayWindow::Tightest => p.tightest(),
-        }
+        self.config.tray_window.pick(p)
     }
 
     fn fraction(&self, w: Option<&Window>) -> Option<f32> {
@@ -89,11 +85,7 @@ impl CodexTray {
 
     /// Recompute the icon after any state change; pixmaps are only re-rendered when they differ.
     pub fn rebuild(&mut self) {
-        let stale = self.snapshot.from_cache
-            || self
-                .snapshot
-                .age_secs()
-                .is_some_and(|a| a > (self.config.refresh_secs as i64 * 3).max(900));
+        let stale = self.snapshot.is_stale(self.config.refresh_secs);
         let p = self.provider();
         let (primary, secondary, text, provider) = match p {
             Some(p) if p.error.is_none() || !p.windows.is_empty() => {

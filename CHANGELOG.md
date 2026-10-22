@@ -2,6 +2,15 @@
 
 All notable changes to Limitray. Each release's section becomes its GitHub release description, so add one here (under the version in `Cargo.toml`) before tagging; the release workflow fails without it.
 
+## [Unreleased]
+
+### Added
+- **Usage history.** Every window now shows how usage has grown so far in the current session or week, drawn against an even pace (the dotted diagonal). Hover it for the value at any time. When the last stretch of usage would hit the limit before the reset, a dashed line and *At the recent rate, the limit is hit around HH:MM* warn you early. Samples are kept for eight days in `~/.cache/limitray/history.jsonl`.
+- **Waybar module.** `limitray waybar` streams JSON for a Waybar `custom` module: the tracked percentage as text, every provider in the tooltip, and a `normal`/`warning`/`critical`/`stale` class for styling. It follows the tray's provider and window choice. `--once` prints a single line. See the README for a config snippet.
+
+### Changed
+- `limitray update` leaves a copy installed under `/usr` (by a package manager) alone and says so, instead of trying to update `~/.local/bin/limitray`.
+
 ## [0.4.2] - 2026-10-19
 
 ### Fixed
