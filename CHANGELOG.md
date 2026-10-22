@@ -2,7 +2,7 @@
 
 All notable changes to Limitray. Each release's section becomes its GitHub release description, so add one here (under the version in `Cargo.toml`) before tagging; the release workflow fails without it.
 
-## [Unreleased]
+## [0.5.0] - 2026-10-22
 
 ### Added
 - **Usage history.** Every window now shows how usage has grown so far in the current session or week, drawn against an even pace (the dotted diagonal). Hover it for the value at any time. When the last stretch of usage would hit the limit before the reset, a dashed line and *At the recent rate, the limit is hit around HH:MM* warn you early. Samples are kept for eight days in `~/.cache/limitray/history.jsonl`.
@@ -61,6 +61,7 @@ All notable changes to Limitray. Each release's section becomes its GitHub relea
 
 - First release, as codexbar-tray: a Linux tray app for the CodexBar CLI.
 
+[0.5.0]: https://github.com/gabors0/limitray/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/gabors0/limitray/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/gabors0/limitray/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/gabors0/limitray/compare/v0.3.0...v0.4.0
