@@ -39,10 +39,6 @@ so there is nothing to paste.
 
 Without the CLI, the app still downloads it on first start, so the bare binary on its own works too.
 
-**Arch Linux:** `limitray-bin` from the AUR (e.g. `yay -S limitray-bin`). Your package manager
-updates it; the app's own updater stays out of the way. Start it from the launcher, or add it to
-your login autostart.
-
 **Upgrading from codexbar-tray:** run the install command above. It stops the old app, carries
 your settings over and removes the old binary, launcher and autostart entries. Your CodexBar CLI
 is kept.
