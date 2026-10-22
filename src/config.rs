@@ -1,3 +1,4 @@
+use crate::model::{ProviderUsage, Window};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -53,6 +54,14 @@ impl TrayWindow {
             TrayWindow::Session => "Session (5h)",
             TrayWindow::Weekly => "Weekly",
             TrayWindow::Tightest => "Whichever is closest to the limit",
+        }
+    }
+    /// The provider's window this setting tracks.
+    pub fn pick(self, p: &ProviderUsage) -> Option<&Window> {
+        match self {
+            TrayWindow::Session => p.session(),
+            TrayWindow::Weekly => p.weekly().or_else(|| p.session()),
+            TrayWindow::Tightest => p.tightest(),
         }
     }
 }
@@ -113,6 +122,10 @@ pub fn cache_path() -> PathBuf {
     dirs::cache_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("limitray/snapshot.json")
+}
+
+pub fn history_path() -> PathBuf {
+    cache_path().with_file_name("history.jsonl")
 }
 
 pub fn runtime_dir() -> PathBuf {

@@ -117,6 +117,14 @@ pub fn self_managed() -> bool {
     me.is_some() && me == canon(installed_path())
 }
 
+/// Installed by a distro package (e.g. the AUR's limitray-bin), which owns its updates.
+fn package_managed() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| fs::canonicalize(p).ok())
+        .is_some_and(|p| p.starts_with("/usr/"))
+}
+
 /// Download, verify and swap in `release` at the installed path. The previous binary is kept as
 /// `limitray.bak`. Running instances keep the old code until they restart.
 pub fn install(release: &Release) -> Result<PathBuf, String> {
@@ -186,7 +194,9 @@ pub fn run_cli(args: &[String]) -> i32 {
                 release.version,
                 release.notes_url()
             );
-            if !check_only {
+            if package_managed() {
+                println!("  This copy came from your package manager; update it there");
+            } else if !check_only {
                 match install(&release) {
                     Ok(target) => {
                         println!("  Installed limitray {}", release.version);

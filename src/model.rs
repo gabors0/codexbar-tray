@@ -167,6 +167,13 @@ impl Snapshot {
     pub fn age_secs(&self) -> Option<i64> {
         self.updated_at.map(|t| (Utc::now() - t).num_seconds())
     }
+    /// Cached or several polls old: shown, but greyed out.
+    pub fn is_stale(&self, refresh_secs: u64) -> bool {
+        self.from_cache
+            || self
+                .age_secs()
+                .is_some_and(|a| a > (refresh_secs as i64 * 3).max(900))
+    }
 }
 
 pub fn provider_name(id: &str) -> String {

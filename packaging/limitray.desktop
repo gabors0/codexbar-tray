@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Limitray
+GenericName=AI usage monitor
+Comment=Claude, Codex and other AI usage limits in your tray
+Exec=limitray
+Icon=limitray
+Terminal=false
+Categories=Utility;Monitor;
+Keywords=claude;codex;usage;quota;limits;
+StartupNotify=false

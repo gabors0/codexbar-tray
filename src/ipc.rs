@@ -1,6 +1,7 @@
 //! Line-delimited JSON over a private Unix socket between the daemon, the popup and CLI clients.
 
 use crate::config::{socket_path, Config};
+use crate::history::Series;
 use crate::model::{Snapshot, UpdateTarget};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
@@ -36,6 +37,9 @@ pub enum Request {
 pub struct State {
     pub snapshot: Snapshot,
     pub config: Config,
+    /// Usage samples in each window's current period, keyed `"<provider>/<window key>"`.
+    #[serde(default, skip_serializing_if = "Series::is_empty")]
+    pub history: Series,
 }
 
 pub fn connect() -> Option<UnixStream> {
