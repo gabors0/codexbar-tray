@@ -2,6 +2,11 @@
 
 All notable changes to Limitray. Each release's section becomes its GitHub release description, so add one here (under the version in `Cargo.toml`) before tagging; the release workflow fails without it.
 
+## [0.6.1] - 2026-10-23
+
+### Changed
+- **New app icon.** Limitray has its own icon now: two orange limit bars forming an L on a dark tile. It replaces the Claude logo in the application launcher and on the window. The window picks it up straight away. For the launcher icon, run `limitray install` once after updating; your desktop may need a re-login to refresh its icon cache.
+
 ## [0.6.0] - 2026-10-23
 
 ### Added
@@ -69,6 +74,7 @@ All notable changes to Limitray. Each release's section becomes its GitHub relea
 
 - First release, as codexbar-tray: a Linux tray app for the CodexBar CLI.
 
+[0.6.1]: https://github.com/gabors0/limitray/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/gabors0/limitray/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/gabors0/limitray/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/gabors0/limitray/compare/v0.4.1...v0.4.2
