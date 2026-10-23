@@ -49,7 +49,6 @@ is kept.
 |---|---|
 | Left click | open/close the window |
 | Middle click | refresh now |
-| Scroll | switch session ↔ weekly (and provider) |
 | Right click | live numbers, icon style, providers, notifications |
 
 Window keys: `Ctrl+R` refresh, `Ctrl+,` settings, `Esc` close.

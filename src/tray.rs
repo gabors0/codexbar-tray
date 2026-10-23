@@ -118,6 +118,7 @@ impl CodexTray {
             brand: icon::brand_color(&provider),
             provider,
             dark_panel: self.dark_panel,
+            monochrome: self.config.monochrome_icon,
         };
         if self.spec.as_ref() != Some(&spec) {
             self.icons = [16, 22, 24, 32, 44, 48, 64]
@@ -238,9 +239,7 @@ impl ksni::Tray for CodexTray {
         } else {
             format!("Updated {}", format::ago(self.snapshot.updated_at))
         };
-        lines.push(format!(
-            "<i>{footer} · middle-click to refresh, scroll to switch</i>"
-        ));
+        lines.push(format!("<i>{footer} · middle-click to refresh</i>"));
         ToolTip {
             title,
             description: lines.join("<br/>"),
@@ -264,32 +263,6 @@ impl ksni::Tray for CodexTray {
 
     fn secondary_activate(&mut self, _x: i32, _y: i32) {
         self.send(Cmd::Refresh { force: true });
-    }
-
-    fn scroll(&mut self, delta: i32, orientation: ksni::Orientation) {
-        if orientation != ksni::Orientation::Vertical || delta == 0 {
-            return;
-        }
-        // Cycle through (provider, window) views: Claude session → Claude weekly → next provider …
-        let mut views = Vec::new();
-        for p in &self.config.providers {
-            views.push((p.clone(), TrayWindow::Session));
-            views.push((p.clone(), TrayWindow::Weekly));
-        }
-        let current = views
-            .iter()
-            .position(|(p, w)| *p == self.config.tray_provider && *w == self.config.tray_window)
-            .unwrap_or(0);
-        let next = (current as i32 + delta.signum()).rem_euclid(views.len() as i32) as usize;
-        let mut cfg = self.config.clone();
-        (cfg.tray_provider, cfg.tray_window) = views[next].clone();
-        // Bars/rings already show both windows; switching implies a single-window style.
-        if matches!(cfg.tray_style, TrayStyle::Bars | TrayStyle::Ring) && cfg.providers.len() == 1 {
-            cfg.tray_style = TrayStyle::Percent;
-        }
-        self.config = cfg.clone();
-        self.rebuild();
-        self.send(Cmd::SetConfig(cfg));
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
@@ -395,6 +368,17 @@ impl ksni::Tray for CodexTray {
                 .collect(),
         }
         .into()];
+        icon_menu.push(
+            CheckmarkItem {
+                label: "Monochrome".into(),
+                checked: self.config.monochrome_icon,
+                activate: Box::new(|t: &mut Self| {
+                    t.update_config(|c| c.monochrome_icon = !c.monochrome_icon)
+                }),
+                ..Default::default()
+            }
+            .into(),
+        );
         icon_menu.push(MenuItem::Separator);
         icon_menu.push(
             StandardItem {

@@ -71,9 +71,9 @@ impl TrayWindow {
 pub struct Config {
     /// CodexBar CLI executable. Bare names are resolved via PATH and ~/.local/bin.
     pub cli: String,
-    /// Providers in display order. The first one drives the tray icon unless changed by scrolling.
+    /// Providers in display order. The first one drives the tray icon by default.
     pub providers: Vec<String>,
-    /// Provider shown in the tray icon (scroll on the icon to cycle).
+    /// Provider shown in the tray icon.
     pub tray_provider: String,
     pub refresh_secs: u64,
     pub show_costs: bool,
@@ -81,6 +81,8 @@ pub struct Config {
     pub quota_display: QuotaDisplay,
     pub tray_style: TrayStyle,
     pub tray_window: TrayWindow,
+    /// Draw the tray icon in the panel's foreground colour and gray instead of brand/alert colours.
+    pub monochrome_icon: bool,
     pub notifications: bool,
     /// Used-percent thresholds that trigger a notification when crossed upwards.
     pub notify_thresholds: Vec<u8>,
@@ -103,6 +105,7 @@ impl Default for Config {
             quota_display: QuotaDisplay::Used,
             tray_style: TrayStyle::Bars,
             tray_window: TrayWindow::Session,
+            monochrome_icon: false,
             notifications: true,
             notify_thresholds: vec![80, 95],
             notify_reset: true,

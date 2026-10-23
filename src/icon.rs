@@ -26,6 +26,7 @@ pub struct IconSpec {
     pub text: Option<String>,
     pub provider: String,
     pub dark_panel: bool,
+    pub monochrome: bool,
     pub brand: (u8, u8, u8),
 }
 
@@ -49,6 +50,12 @@ impl IconSpec {
         }
     }
     fn color(&self, level: Level) -> Color {
+        if self.monochrome {
+            return match level {
+                Level::Stale => rgba(self.fg(), 0.45),
+                _ => rgba(self.fg(), 1.0),
+            };
+        }
         match level {
             Level::Normal => rgba(self.brand, 1.0),
             Level::Warn => rgba((245, 165, 36), 1.0),
@@ -356,7 +363,7 @@ pub fn render(spec: &IconSpec, font: Option<&FontVec>, size: u32) -> ksni::Icon 
         TrayStyle::Logo => {
             let bar_h = (s * 0.16).max(2.0);
             let logo = s - bar_h - s * 0.10;
-            let tint = if spec.primary_level == Level::Normal {
+            let tint = if spec.primary_level == Level::Normal && !spec.monochrome {
                 rgba(spec.brand, 1.0)
             } else {
                 spec.color(spec.primary_level)

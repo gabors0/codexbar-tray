@@ -504,7 +504,7 @@ pub fn install(args: &[String]) -> i32 {
     if !claude_logged_in() {
         println!("\nClaude: no login found in ~/.claude. Install Claude Code and run `claude` once to sign in;\nThe CodexBar CLI reads the same credentials (nothing to paste).");
     }
-    println!("\nDone. Click the tray icon for details, scroll on it to switch session/weekly, middle-click to refresh.");
+    println!("\nDone. Click the tray icon for details, middle-click to refresh.");
     let _ = std::io::stdout().flush();
     0
 }

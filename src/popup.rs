@@ -1313,7 +1313,19 @@ impl PopupApp {
                     ],
                 );
             }
-            ui.label(RichText::new("Tip: scroll on the tray icon to flip between session and weekly; middle-click refreshes.").size(11.0).color(pal.faint));
+            ui.add_space(4.0);
+            toggle(
+                ui,
+                &pal,
+                &mut draft.monochrome_icon,
+                "Monochrome icon",
+                Some("Panel text colour and gray instead of brand and alert colours"),
+            );
+            ui.label(
+                RichText::new("Tip: middle-click the tray icon to refresh.")
+                    .size(11.0)
+                    .color(pal.faint),
+            );
             ui.add_space(6.0);
             toggle(
                 ui,
