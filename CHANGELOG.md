@@ -2,6 +2,14 @@
 
 All notable changes to Limitray. Each release's section becomes its GitHub release description, so add one here (under the version in `Cargo.toml`) before tagging; the release workflow fails without it.
 
+## [0.6.0] - 2026-10-23
+
+### Added
+- **Monochrome tray icon.** Settings → Display → *Monochrome icon* (or *Monochrome* in the tray menu's icon submenu) draws the icon in the panel's text colour and gray instead of the provider's brand colour: white and gray on a dark panel, black and gray on a light one. Warning and critical levels are no longer coloured in this mode; the tray still flags critical usage through its attention status.
+
+### Removed
+- Scrolling on the tray icon no longer switches between session and weekly. It only affected the number and logo styles and was unreliable with fast wheel or touchpad scrolling. Pick the tracked window in the tray menu or in settings instead.
+
 ## [0.5.0] - 2026-10-22
 
 ### Added
@@ -61,6 +69,7 @@ All notable changes to Limitray. Each release's section becomes its GitHub relea
 
 - First release, as codexbar-tray: a Linux tray app for the CodexBar CLI.
 
+[0.6.0]: https://github.com/gabors0/limitray/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/gabors0/limitray/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/gabors0/limitray/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/gabors0/limitray/compare/v0.4.0...v0.4.1
