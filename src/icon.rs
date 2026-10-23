@@ -406,11 +406,14 @@ pub fn render(spec: &IconSpec, font: Option<&FontVec>, size: u32) -> ksni::Icon 
     }
 }
 
-/// Renders the app icon (provider logo, untinted brand colour) for windows/desktop files.
-pub fn render_rgba_logo(provider: &str, brand: (u8, u8, u8), size: u32) -> Option<Vec<u8>> {
-    let svg = crate::icons::provider_svg(provider)?;
+const APP_SVG: &[u8] = include_bytes!("../assets/limitray.svg");
+
+/// Renders the app icon (assets/limitray.svg) for windows/desktop files.
+pub fn render_rgba_app_icon(size: u32) -> Option<Vec<u8>> {
+    let tree = resvg::usvg::Tree::from_data(APP_SVG, &resvg::usvg::Options::default()).ok()?;
     let mut pixmap = Pixmap::new(size, size)?;
-    draw_svg(&mut pixmap, svg, 0.0, 0.0, size as f32, rgba(brand, 1.0));
+    let k = size as f32 / tree.size().width().max(tree.size().height());
+    resvg::render(&tree, Transform::from_scale(k, k), &mut pixmap.as_mut());
     Some(
         pixmap
             .pixels()
@@ -432,5 +435,19 @@ pub fn brand_color(provider: &str) -> (u8, u8, u8) {
         "copilot" => (130, 80, 223),
         "openrouter" => (100, 116, 255),
         _ => (61, 174, 233),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_icon_renders() {
+        let rgba = render_rgba_app_icon(64).unwrap();
+        assert_eq!(rgba.len(), 64 * 64 * 4);
+        // Transparent corner, opaque middle.
+        assert_eq!(rgba[3], 0);
+        assert_eq!(rgba[(32 * 64 + 32) * 4 + 3], 255);
     }
 }

@@ -1704,7 +1704,7 @@ pub fn run() -> i32 {
         .with_inner_size(vec2(WIDTH, 420.0))
         .with_resizable(true)
         .with_decorations(false);
-    if let Some(rgba) = crate::icon::render_rgba_logo("claude", brand_color("claude"), 64) {
+    if let Some(rgba) = crate::icon::render_rgba_app_icon(64) {
         viewport = viewport.with_icon(egui::IconData {
             rgba,
             width: 64,

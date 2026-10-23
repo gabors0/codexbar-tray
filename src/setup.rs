@@ -445,8 +445,7 @@ pub fn install(args: &[String]) -> i32 {
     }
 
     // 4. Launcher entry, icon, autostart.
-    let (r, g, b) = crate::icon::brand_color("claude");
-    if let Some(rgba) = crate::icon::render_rgba_logo("claude", (r, g, b), 256) {
+    if let Some(rgba) = crate::icon::render_rgba_app_icon(256) {
         if let Some(dir) = icon_path().parent() {
             let _ = fs::create_dir_all(dir);
         }
